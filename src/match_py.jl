@@ -304,6 +304,7 @@ end
 # θ \theta  is an iterator of substiutions;
 # default is (MatchDict(),)
 function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
+    @show :m11, ss, p, collect(θ)
     n = length(ss)
     if !has_𝑋(p)     # constant symbol
         # match if p == ss(1)
@@ -328,7 +329,6 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
 
     elseif _is_𝑋(p)                      # sequence variable?
         haspred, var, pred = has_predicate(p)
-
         if haspred && !Base.invokelatest(Main.eval(pred), ss)
             return ∅
         end
@@ -351,25 +351,28 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
             # check for non matching operation
             opₚ = operation(p)
             if !iscall(s) || (soperation(s) != opₚ)
+                p′ = nothing
                 if opₚ ∈ (:(+), :(*))
                     p′′, ps′ = _groupby(_is_DefSlot, arguments(p))
-                    p′ = only(p′′) # or error
+                    p′ = first(p′′) # or error
                     𝑝 = mterm(Expr, opₚ, ps′)
-                    θ′ = match_one_to_one(ss, 𝑝, fₐ)
                 elseif opₚ == :(^)
                     𝑝, p′ = arguments(p)
                     _is_DefSlot(p′) || error("huh?")
-                    θ′ = match_one_to_one(ss, 𝑝, fₐ)
-                else
-                    θ′ = ()
                 end
-                if !isempty(θ′)
+                if _is_𝑋(p′)
                     σ′ = MatchDict(p′ =>  DefSlotDefaults[operation(p)])
-                    for σ ∈ θ′
-                        σ = union_match(σ, σ′)
-                        θ = union_merge(θ, σ)
+                    @show :XXX, p′, DefSlotDefaults[operation(p)]
+                    θ′′ = union_merge(θ, σ′)
+                    @show ss, 𝑝
+                    θ′ = match_one_to_one(ss, 𝑝, fₐ, θ′′)
+                    if !isempty(θ′)
+                        for σ ∈ θ′
+                            σ = union_match(σ, σ′)
+                            θ = union_merge(θ, σ)
+                        end
+                        return θ
                     end
-                    return θ
                 end
             end
         end
@@ -429,18 +432,18 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(MatchDict(),))
             end
             θ′ == () && return nothing
             return θ′
-        end
+        end |> Base.Fix1(Iterators.filter, !isnothing)
     end
 
-    i |> Iterators.flatten |>
-        Base.Fix1(Iterators.filter, !isnothing)
+    i |> Iterators.flatten
+
 
 end
 
 ## ----
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (MatchDict(),))
-    ##_##_@show :mcs
+
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -517,29 +520,28 @@ end
 # returns (ss,ps) or nothing
 function  _match_matched_variables(ss, ps, σ)
     # subtract from, ps, ss previously matched variables
-
     (isnothing(σ) || isempty(σ)) && return (ss, ps)
 
     for (p,s) ∈ σ
         for _ in 1:count(==(p), ps)
             # delete s from ss or return nothhing
-            itr = isa(s, Tuple) ? s : (s,)
+            itr = applicable(iterate, s) ? s : [s] #isa(s, Tuple) ? s : (s,)
             for si ∈ itr
                 i = findfirst(==(si), ss)
                 isnothing(i) && return nothing
-                ss = Tuple(v for (j,v) ∈ enumerate(ss) if j != i)
+                ss = [v for (j,v) ∈ enumerate(ss) if j != i]
             end
         end
     end
 
-    ps = Tuple(v for v in ps if v ∉ keys(σ)) #v ∉ first.(σ)) # XXX ?
+    ps = [v for v in ps if v ∉ keys(σ)] #v ∉ first.(σ)) # XXX ?
     ss, ps
 end
 
 
 # match defslot patterns early
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=MatchDict())
-    ##_@show :mds
+    @show :mds
 
     # this checks for defslots amongst arguments
     # and in powers
@@ -547,9 +549,10 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=MatchDict())
     if fₐ ∈ (:(+), :(*))
         ps′, ps′′ = _groupby(_is_DefSlot, ps)
         if !isempty(ps′)
-            p = only(ps′)
-            σ′ = union_match(σ, MatchDict(p => DefSlotDefaults[fₐ]))
-            push!(θ₁, (ss, ps′′, σ′))
+            for p ∈ ps′
+                σ′ = union_match(σ, MatchDict(p => DefSlotDefaults[fₐ]))
+                push!(θ₁, (ss, ps′′, σ′))
+            end
         end
 
         θ₂ = []
@@ -558,15 +561,17 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=MatchDict())
             ss, ps, σ = a
             ps′, ps′′ = _groupby(p -> is_operation(:^)(p) && _is_DefSlot(arguments(p)[2]), ps)
             if !isempty(ps′)
-                p = only(ps′) # only one allowed!
-                a, b = arguments(p)
-                _is_DefSlot(a) && error("not supposed to be")
-                σ′ = union_match(σ, MatchDict(b => DefSlotDefaults[:(^)]))
-                push!(θ₂, (ss, vcat(a, ps′′), σ′))
+                for p ∈ ps′
+                    a, b = arguments(p)
+                    _is_DefSlot(a) && error("not supposed to be")
+                    σ′ = union_match(σ, MatchDict(b => DefSlotDefaults[:(^)]))
+                    push!(θ₂, (ss, vcat(a, ps′′), σ′))
+                end
             end
         end
         θ₁ = θ₂
     end
+    @show σ, collect(θ₁)
     return θ₁
 
     #=
@@ -719,7 +724,7 @@ end
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
-    ##_@show :msv, ss, ps, σ
+    #@show :msv, ss, ps, σ
 
     isempty(ps) && return (σ, )
 
@@ -729,6 +734,7 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
     _is_WILD(x) = _is_Wild(x) || _is_DefSlot(x)
 
     ss, ps = out
+
     if !isassociative(fc)
         !isempty(filter(_is_WILD, ps)) && return nothing #()
     end
@@ -757,8 +763,8 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
         (as) -> mterm(typeof(first(as)), fc, as, nothing)
     ##_@show :msv,vars, svars, σ
     # rename
-    ssᵥ = Tuple(v for (k,v) in ds) # last.(ds)
-    i = ntuple((a) -> 0, Val(n))
+    ssᵥ = [v for (k,v) in ds] # last.(ds)
+    i = ntuple(zero, Val(n))
 
     ii = Iterators.filter(Iterators.product(
         (Iterators.product((0:s for _ in 1:n)...) for s in ssᵥ)...)) do u
@@ -779,7 +785,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
             if isempty(vv)
                 if _is_DefSlot(v)
                     vv′ = DefSlotDefaults[fc]
-                    @show σ, v
                     #return nothing # handled elsewhere?????
                 elseif _is_Star(v)
                     vv′ = missing
@@ -1017,6 +1022,7 @@ end
 
 #_rewrite(u::Any, σ) = u
 
+_rewrite(::Any, u::Union{Symbol,Number}, σ) = u
 function _rewrite(::Type{T}, u::Expr, σ)  where T
     if _is_𝑋(u)
         _, var, _ = has_predicate(u)
@@ -1032,7 +1038,6 @@ function _rewrite(::Type{T}, u::Expr, σ)  where T
 end
 
 function _replace_arguments(ex::T, u, v) where T
-    @show ex, typeof(ex)
     iscall(ex) || return (ex == u ? v : ex)
 
     σ = _match(u, ex) # sigma is nothing, (), or a substitution
@@ -1063,7 +1068,7 @@ end
 # return iterator of each possible match
 function _eachmatch(pat::Expr, ex)
     if has_𝑋(pat)
-        return match_one_to_one((ex,), pat)
+        return match_one_to_one([ex], pat)
     else
         σ = syntactic_match(ex, pat)
         return isnothing(σ) ? () : (σ,)
