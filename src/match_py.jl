@@ -31,8 +31,9 @@ function mterm(T, f::Union{Symbol, Expr}, ss, md=nothing)
     end
 end
 mterm(T::Type{Symbol}, f::Symbol, ss, md=nothing) = mterm(Expr, f, ss)
+mterm(T::Type{Real}, f::Symbol, ss, md=nothing) = mterm(Expr, f, ss)
 function mterm(T, f::Any, ss, md=nothing)
-    @show T, f, ss
+    ##_@show T, f, ss
     maketerm(T,f,ss,md)
 end
 
@@ -234,7 +235,6 @@ end
 soperation(f::Any) = Symbol(operation(f))
 
 function syntactic_match(s, p, σ = MatchDict())
-
     if !has_𝑋(p) # no wild
         return asexpr(s) == p ? σ : ϟ
     elseif _is_Slot(p)
@@ -251,7 +251,7 @@ function syntactic_match(s, p, σ = MatchDict())
                 return ϟ
             end
         end
-
+        ##_@show var, s
         σ′ = _setvalue(σ, var => s)
         return σ′
 
@@ -263,11 +263,11 @@ function syntactic_match(s, p, σ = MatchDict())
     if !iscall(s) || (iscall(s) && soperation(s) != operation(p)) &&
         any(_is_DefSlot, arguments(p)) &&
         operation(p) ∈ keys(DefSlotDefaults)
-        ##_##_@show :defslot_test
+        ##_##_##_@show :defslot_test
         # try without
         # clean this up!
         σ′ = FAIL_DICT
-        @show :defslot_use
+        ##_@show :defslot_use
         if operation(p) ∈ (:*, :+)
             as, p′′ = _groupby(!_is_DefSlot, arguments(p))
             p′ = only(p′′) # must be just one slot variable
@@ -304,7 +304,7 @@ end
 # θ \theta  is an iterator of substiutions;
 # default is (MatchDict(),)
 function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
-    @show :m11, ss, p, collect(θ)
+    ##_@show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)     # constant symbol
         # match if p == ss(1)
@@ -322,6 +322,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
                     return ∅
                 end
             else
+                ##_@show var,data
                 σ′ = _setvalue(σ′, var => data)
             end
             return union_merge(θ, σ′)
@@ -333,8 +334,9 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
             return ∅
         end
 
-        if _is_Wild(var) && !isnothing(fₐ) # regular and associative function
-            value = mterm(typeof(first(ss)), fₐ, ss, nothing)
+        if _is_Slot(var) && !isnothing(fₐ) # regular and associative function
+            value = mterm(Expr, fₐ, ss)
+            #value = mterm(typeof(first(ss)), fₐ, ss, nothing)
             σ′ = MatchDict(var => value)
         else
             σ′ = MatchDict(var => ss)
@@ -347,34 +349,44 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (MatchDict(),))
         s = only(ss)
         iscall(p) || return ∅
 
-        if any(_is_DefSlot, arguments(p))
-            # check for non matching operation
-            opₚ = operation(p)
-            if !iscall(s) || (soperation(s) != opₚ)
-                p′ = nothing
-                if opₚ ∈ (:(+), :(*))
-                    p′′, ps′ = _groupby(_is_DefSlot, arguments(p))
-                    p′ = first(p′′) # or error
-                    𝑝 = mterm(Expr, opₚ, ps′)
-                elseif opₚ == :(^)
-                    𝑝, p′ = arguments(p)
-                    _is_DefSlot(p′) || error("huh?")
+        asₚ = copy(arguments(p))
+
+        if any(_is_DefSlot, asₚ)
+            ##_@show :defslot
+            # Defslots -- first check if there is a match with a slot variable
+            # if so, return that. Else, replace with default value and move on.
+
+            i = findfirst(_is_DefSlot, asₚ)
+            dvar = asₚ[i]
+            wvar = :(~x); wvar.args[2] = Symbol(join(rand("abcdefghijklmnopqrstuvwxyz", 8)))
+            asₚ[i] = wvar
+            ##_@show dvar, wvar
+            𝑝 = mterm(Expr, operation(p), asₚ)
+            θ′ = match_one_to_one(ss, 𝑝, fₐ, θ)
+            if !isempty(θ′)
+                # replace wvar with svar in each σ
+                λ = σ′ -> begin
+                    val = get(σ′,wvar, nothing)
+                    σ′ = _setvalue(σ′, dvar => val)
+                    σ = Base.ImmutableDict([kv for kv ∈ σ′ if first(kv) != wvar]...)
+                    return σ
                 end
-                if _is_𝑋(p′)
-                    σ′ = MatchDict(p′ =>  DefSlotDefaults[operation(p)])
-                    @show :XXX, p′, DefSlotDefaults[operation(p)]
-                    θ′′ = union_merge(θ, σ′)
-                    @show ss, 𝑝
-                    θ′ = match_one_to_one(ss, 𝑝, fₐ, θ′′)
-                    if !isempty(θ′)
-                        for σ ∈ θ′
-                            σ = union_match(σ, σ′)
-                            θ = union_merge(θ, σ)
-                        end
-                        return θ
-                    end
+                θ′′ = Iterators.map(λ, θ′)
+                return θ′′
+            else
+                opₚ = operation(p)
+                θ = (_setvalue(σ′, dvar => DefSlotDefaults[opₚ]) for σ′ ∈ θ)
+                # replace pieces of `p`
+                if opₚ ∈ (:(+), :(*))
+                    bs = [asₚ[j] for j in 1:length(asₚ) if j != i]
+                    p = mterm(Expr, opₚ, bs)
+                elseif opₚ == :(^)
+                    p = asₚ[1]
                 end
             end
+
+            return match_one_to_one(ss, p, fₐ, θ)
+
         end
 
         iscall(s) || return ∅ # ??
@@ -391,6 +403,7 @@ end
 
 # 3.3 match non-commutative function
 function match_sequence(ss, ps, fₐ=nothing, θ=(MatchDict(),))
+    ##_@show :ms, ss, ps, fₐ
     n, m = length(ss), length(ps)
     nstar = count(_is_Star, ps)
     m - nstar > n && return ∅
@@ -443,7 +456,7 @@ end
 ## ----
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (MatchDict(),))
-
+    ##_@show :mcs, ss, ps, fₐ
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -498,6 +511,7 @@ end
 
 # return trimmed ss, ps or nothing
 function _match_constant_patterns(ss, ps)
+    ##_@show :mcp, ss, ps
     # XXX what about mismatched match?
     # XXX clean this up!
 
@@ -519,6 +533,7 @@ end
 # trims down ss, ps
 # returns (ss,ps) or nothing
 function  _match_matched_variables(ss, ps, σ)
+    ##_@show :mmv, ss, ps
     # subtract from, ps, ss previously matched variables
     (isnothing(σ) || isempty(σ)) && return (ss, ps)
 
@@ -541,8 +556,40 @@ end
 
 # match defslot patterns early
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=MatchDict())
-    @show :mds
+    ##_@show :mds, ss, ps, fₐ
 
+    if any(_is_DefSlot, ps)
+        ##_@show :XXX
+
+    elseif any(p -> is_operation(:^)(p) && _is_DefSlot(arguments(p)[2]), ps)
+        ##_@show :YYY
+        i =  findfirst(p -> is_operation(:^)(p) && _is_DefSlot(arguments(p)[2]), ps)
+        ##_@show :defslot, i, ps
+        ps′ = copy(ps)
+        p = ps′[i]
+        a, b = arguments(p)
+        wvar = :(~x); wvar.args[2] = Symbol(join(rand("abcdefghijklmnopqrstuvwxyz", 8)))
+        ps′[i] = mterm(Expr, :(^), (a, wvar))
+        θ = match_commutative_sequence(ss, ps′, fₐ, (σ,))
+        if !isempty(θ)
+            λ = σ -> begin
+                val = get(σ, wvar, nothing)
+                σ = _setvalue(σ, b => val)
+                Base.ImmutableDict([kv for kv ∈ σ if first(kv) != wvar]...)
+            end
+            return (((),(),λ(σ)) for σ in θ)
+        else
+            ##_@show i, a, ps′
+            ps′[i] = a
+            σ = _setvalue(σ, b => DefSlotDefaults[:(^)])
+            ##_@show ps′, σ
+            return ((ss, ps′, σ),)
+        end
+    else
+        return ((ss, ps, σ),)
+    end
+
+    #=
     # this checks for defslots amongst arguments
     # and in powers
     θ₁ = [(ss, ps, σ)]
@@ -571,9 +618,9 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=MatchDict())
         end
         θ₁ = θ₂
     end
-    @show σ, collect(θ₁)
+    ##_@show σ, collect(θ₁)
     return θ₁
-
+    =#
     #=
     # XXX
     # at top level
@@ -634,7 +681,7 @@ end
 # match non_variable_patterns
 # return iterator of (ss, ps, σ)
 function _match_non_variable_patterns(ss, ps, fc=nothing, σ=MatchDict())
-    ##_@show :mnvp, ss, ps, σ
+    ##_@show :mnvp, ss, ps, fc
 
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
@@ -658,10 +705,7 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=MatchDict())
         ss′′′ = ss′[inds]
         θ′ = (σ,)
         for (s,p) ∈ zip(ss′′′, ps′)
-            # XXX defslot
-            # XXX predicate
-            # XXX exp(x) -> ℯ^x in SymEngine
-            ##_##_@show s, p, ss′′′, ps′
+            ##_@show :mnvp, s, p
 
             soperation(s) == soperation(p) || return nothing
             θ′ = match_sequence(arguments(s), arguments(p), fc, θ′)
@@ -683,7 +727,7 @@ end
 # match x_ type variables
 # return iterator of (ss, ps, σ)
 function _match_regular_variables(ss, ps, fc=nothing, σ = MatchDict())
-    ##_##_@show :mrv, ss, ps
+    ##_@show :mrv, ss, fc, ps
     isempty(ps) && return ((ss, ps, σ), )
 
     out =  _match_matched_variables(ss, ps, σ)
@@ -724,24 +768,20 @@ end
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
-    #@show :msv, ss, ps, σ
-
+    ##_@show :msv, ss, ps, fc
     isempty(ps) && return (σ, )
 
     out =  _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
 
-    _is_WILD(x) = _is_Wild(x) || _is_DefSlot(x)
+    _is_WILD(x) = _is_Wild(x) #|| _is_DefSlot(x)
 
     ss, ps = out
-
     if !isassociative(fc)
         !isempty(filter(_is_WILD, ps)) && return nothing #()
     end
 
-    # add _is_DefSlot?
     vs, vs′ = _groupby(x -> _is_WILD(x) || _is_Plus(x), ps)
-
     length(vs) > length(ss) && return nothing # ?(); too many plus variables
 
     ds = _countmap(ss)
@@ -760,8 +800,8 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
     n = n1 + n2
 
     h = isnothing(fc) ? identity :
-        (as) -> mterm(typeof(first(as)), fc, as, nothing)
-    ##_@show :msv,vars, svars, σ
+        (as) -> mterm(Expr, fc, as, nothing)
+    ##_##_@show :msv,vars, svars, σ
     # rename
     ssᵥ = [v for (k,v) in ds] # last.(ds)
     i = ntuple(zero, Val(n))
@@ -792,8 +832,9 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
                     vv′ = nothing
                 end
             else
-                vv′ = h(vv)
+                vv′ = isa(fc, Symbol) ? mterm(Expr, fc, vv) : vv
             end
+            ##_@show v, vv′
             if !isnothing(vv′)
                 haspred, var, pred = has_predicate(v)
                 if haspred
@@ -806,9 +847,10 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
                     σ′′ = MatchDict(v => vv′)
                 end
                 iscompatible(σ′, σ′′) || break
-                for kv ∈ σ′′
-                    σ′ = _setvalue(σ′, kv)
-                end
+                σ′ = union_match(σ′, σ′′)
+#                for kv ∈ σ′′
+#                    σ′ = _setvalue(σ′, kv)
+#                end
             end
         end
         iscompatible(σ, σ′) || return nothing
@@ -817,9 +859,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = MatchDict())
 
     #return iii # XXX
     iv = Iterators.filter(!isnothing, iii)
-    for u ∈ iv
-        ##_@show u
-    end
     iv
 end
 

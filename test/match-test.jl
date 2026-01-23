@@ -51,7 +51,7 @@ end
          len = 1),
         (pat = :(~x + ~!y),
          sub = :(a + b + c),
-         len = 7),
+         len = 6),
         (pat = :(~x + ~~y),
          sub = :(a + b + c),
          len = 7),
@@ -60,10 +60,10 @@ end
          len = 6),
         (pat = :(~!x + ~~y),
          sub = :(a + b + c),
-         len = 8),
+         len = 7),
         (pat = :(~!x + ~~~y),
          sub = :(a + b + c),
-         len = 7),
+         len = 6),
         (pat = :(~~x + ~~y),
          sub = :(a + b + c),
          len = 8),
@@ -81,12 +81,12 @@ end
         (pat = :((~x)^(~!y)),
          sub = :(a^2),
          len = 1),
-        (pat = :(~x + (~y)^(~!z)),
+         (pat = :(~x + (~y)^(~!z)),
          sub = :(a + b),
          len = 2),
         (pat = :(~!x + (~y)^(~!z)),
          sub = :(a + b),
-         len = 3),
+         len = 2),
 
         # wrapped in functions
         (pat = :(log(~x) + log(~y)),
@@ -117,7 +117,7 @@ end
          len = 6),
         (pat = :(log(log(~~~x + ~!y))),
          sub = :(log(log(a + b + c))),
-         len = 7),
+         len = 6),
         (pat = :(~!x + log(log(~y))),
          sub = :(log(log(a)) + log(log(b))),
          len = 2),
@@ -144,7 +144,6 @@ end
     ]
 
     for (;pat, sub, len) ∈ ts
-        #@show pat
         u = collect(_eachmatch(pat, sub))
         @test length(u) == len
     end
