@@ -42,21 +42,57 @@ The function checks in this order:
     do checks for negative exponent TODO
 """
 
-
+#
 
 using Combinatorics: permutations, combinations
 using TermInterface
 
-const MatchDict = Base.ImmutableDict{Union{Expr, Symbol}, Any}
-const FAIL_DICT = MatchDict(:_fail, 0)
-ϟ = FAIL_DICT
+const MatchDict = Base.ImmutableDict{Symbol, Any}
+ϟ = FAIL_DICT = MatchDict(:_fail,0)
 
-const op_map = Dict(:+ => 0, :* => 1, :^ => 1)
+
+__eachmatch(pat::Union{Symbol, Expr}, sub) = check_expr_r(sub, pat, [MatchDict()])
+
+function __match(pat::Union{Symbol, Expr}, sub)
+    σs = __eachmatch(pat, sub)
+    _σ = iterate(σs)
+    isnothing(_σ) ? _σ : first(_σ)
+end
+
+# return nothing if not a total match
+function __replace(s::Expr, pat_r::Pair)
+    pat, r = pat_r
+    σ = __match(pat, s)
+    fs = _free_symbols(r)
+    if isnothing(σ)
+        isempty(fs) && return r
+        return nothing
+    else
+        Set(keys(σ)) == Set(fs) || error("didn't fill out all symbols")
+        _rewrite(σ, r)
+    end
+end
+__replace(s, pat_r, prs::Pair...) = foldl(__replace, prs; init=__replace(s, pat_r))
+
+function _rewrite(σ::MatchDict, rhs)
+    !iscall(rhs) && return rhs
+    if is_𝑋(rhs)
+        var = varname(rhs)
+        if haskey(σ, var)
+            return σ[var]
+        else
+            error("No match found for variable $(var)") #it should never happen
+        end
+    end
+    # otherwise call recursively on arguments and then reconstruct expression
+    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
+    return mterm(operation(rhs), args)
+end
 
 # SymbolicUtils._isone -> _isone
 # SymbolicUtils.unwrap_const -> unwrap_const
 
-_isone(x) = isone(x)
+_isone(x) = isequal(x, 1)
 _eval(pred, data) = !Base.invokelatest(Main.eval(pred), data)
 
 _groupby(pred, t) = (t = filter(pred,t), f=filter(!pred, t))
@@ -93,6 +129,8 @@ function is_slot(x::Expr)
     return true
 end
 
+
+const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1)
 function is_defslot(x::Expr)
     is_𝑋(x) || return false
     _, arg = x.args
@@ -119,6 +157,14 @@ function varname(x::Expr)
     end
 end
 
+_free_symbols(::Any) = Expr[]
+function _free_symbols(x::Expr)
+    is_𝑋(x) && return [varname(x)]
+    iscall(x) || return Expr[]
+    unique(vcat(_free_symbols.(arguments(x))...))
+end
+
+
 # return bool, var (symbol name), pred
 has_predicate(x::Symbol) = false
 function has_predicate(x::Expr)
@@ -143,32 +189,29 @@ end
 # TODO ~a*(~b*~c) currently will not match a*b*c . a fix is possible
 # TODO rules with symbols like ~b * a currently cause error
 
-__match(pat, sub) = check_expr_r(sub, pat, MatchDict())
-
-
 # for when the rule contains a symbol, like ℯ, or a literal number
-function check_expr_r(data, rule::Union{Real, Symbol}, matches::MatchDict)
-    rule == asexpr(data) && return matches
-    return ϟ
+function check_expr_r(data, rule::Union{Real, Symbol}, σs)
+    rule == asexpr(data) && return σs
+    return MatchDict[]
 end
 
 # main function
-function check_expr_r(data, rule::Expr, matches::MatchDict)::MatchDict
+function check_expr_r(data, rule::Expr, σs)
+
     if !iscall(rule)
         @show :what_is, rule
     end
-    @show :check, data, rule, matches
 
     # rule is a single variable
     if is_𝑋(rule) #rule.head == :call && rule.args[1] == :(~)
-        return just_variable(data, rule, matches)
+        return just_variable(data, rule, σs)
     end
 
 
     # if there is a deflsot in the arguments
     i = findfirst(is_defslot, arguments(rule))
     if i !== nothing
-        return has_defslot(data, rule, matches, i)
+        return has_defslot(i, data, rule, σs)
     end
 
 
@@ -184,16 +227,16 @@ function check_expr_r(data, rule::Expr, matches::MatchDict)::MatchDict
     # rule is a normal call, check operation and arguments
     # XXX data Rational?
     if (operation(rule) == ://) && isa(data, Rational)
-        return  has_rational(data, rule, matches)
+        return  has_rational(data, rule, σs)
     end
 
-    !iscall(data) && return ϟ::MatchDict
+    !iscall(data) && return MatchDict[]
 
     opᵣ, opₛ = operation(rule), Symbol(operation(data))
 
     # check opᵣ for special case
     if opᵣ ∈ (:^, :sqrt, :exp)
-        return has_specialcased_op(data, rule, matches)
+        return has_specialcased_op(data, rule, σs)
     end
 
     # gimmick to make Neim work in some cases:
@@ -201,63 +244,71 @@ function check_expr_r(data, rule::Expr, matches::MatchDict)::MatchDict
     # (the final solution would be remove divisions form rules)
     # * if the rule is a product, at least one of the factors is a power, and data is a division
 
-    neim_pass, arg_data, arg_rule = neim_rewrite(data, rule, matches)
-    opₛ != opᵣ && !neim_pass && return ϟ
+    neim_pass, arg_data, arg_rule = neim_rewrite(data, rule)
+    opₛ != opᵣ && !neim_pass && return MatchDict[]
 
     # segments variables means number of arguments might not match
     if (any(is_segment, arg_rule))
-        return has_any_segment(opₛ, arg_data, opᵣ, arg_rule,  matches)
+        return has_any_segment(opₛ, arg_data, opᵣ, arg_rule,  σs)
     end
 
-    (length(arg_data) != length(arg_rule)) && return ϟ::MatchDict
+    (length(arg_data) != length(arg_rule)) && return MatchDict[]
 
     if iscommutative(opᵣ)
-        @show :XXX_is_commutative, arg_rule, arg_data
-        @show matches
-        return check_commutative(opₛ, arg_data, opᵣ, arg_rule, matches)
+        return check_commutative(arg_data, arg_rule, σs)
     end
 
     # normal checks
-    return ceoaa(arg_data, arg_rule, matches)::MatchDict
+    return ceoaa(arg_data, arg_rule, σs)
 end
 
 # check expression of all arguments
 # elements of arg_rule can be Expr or Real
 # TODO types of arg_data ??? SymsType[]
-function ceoaa(arg_data, arg_rule, matches)
-    for (a, b) in zip(arg_data, arg_rule)
-        @show :ceoaa, a, b, matches
-        matches = check_expr_r(a, b, matches)
-        @show :ceoaa, matches
-        matches === ϟ && return ϟ
-        # else the match has been added (or not added but confirmed)
+function XXceoaa(arg_data, arg_rule, σs)
+    σ′′s = MatchDict[]
+    for σ ∈ σs
+        for (a, b) in zip(arg_data, arg_rule)
+            σ′s = check_expr_r(a, b, [σ])
+            !isempty(σ′s) && (σ′′s = union(σ′′s, σ′s))
+        end
     end
-    return matches
+    return σ′′s
+end
+
+function ceoaa(arg_data, arg_rule, σs)
+    σ′s = σs
+    for (a, b) in zip(arg_data, arg_rule)
+        σ′s = check_expr_r(a, b, σ′s)
+        isempty(σ′s) && return MatchDict[]
+    end
+    return σ′s
 end
 
 # match a single variable
-function just_variable(data, rule, matches)
+function just_variable(data, rule, σs)
     @assert is_𝑋(rule)
 
     var = varname(rule)
     val = is_segment(rule) ? (data,) : data
 
-    if var in keys(matches) # if the slot has already been matched
-        !isequal(matches[var], val) && return ϟ::MatchDict
-        return matches
-    else
-        # if never been matched
-        if has_predicate(rule)
-            pred = get_predicate(rule)
-            _eval(pred, val) && return ϟ
-            return MatchDict(matches, var, val)
+    ms = MatchDict[]
+    for σ ∈ σs
+        if var in keys(σ) # if the slot has already been matched
+            isequal(σ[var], val) && push!(ms, σ)
+        else
+            # if never been matched
+            if has_predicate(rule)
+                pred = get_predicate(rule)
+                !_eval(pred, val) && continue
+            end
+            push!(ms, MatchDict(σ, var, val))
         end
-        # if no predicate add match
-        return MatchDict(matches, var, val)
     end
+    return ms
 end
 
-function has_defslot(data, rule, matches, i)
+function has_defslot(i, data, rule, σs)
     ps = copy(arguments(rule))
     pᵢ = ps[i]
     qᵢ = :(~$(pᵢ.args[2].args[2]))
@@ -267,34 +318,32 @@ function has_defslot(data, rule, matches, i)
     newr = mterm(operation(rule), ps)
 
 
-    σ = check_expr_r(data, newr, matches)
-    σ !== ϟ && return σ
+    σ′s = check_expr_r(data, newr, σs)
+    !isempty(σ′s) && return σ′s # had a match
 
     # if no normal match, check only the non-defslot part of the rule
     deleteat!(ps, i)
     tmp = mterm(operation(rule), ps)
-    σ = check_expr_r(data, tmp, matches)
+    σs = check_expr_r(data, tmp, σs)
 
-    # if yes match
-    if σ !== ϟ
-        value = get(op_map, operation(rule), -1)
-        return MatchDict(σ, varname(qᵢ), value)
-    end
-    return ϟ
+    var = varname(qᵢ)
+    value = get(defslot_op_map, operation(rule), -1)
+    return [MatchDict(σ, var, value) for σ ∈ σs if σ != ϟ]
+
 end
 
 
 
-function has_rational(data, rule, matches)
+function has_rational(data, rule, σs)
     # rational is a special case, in the integration rules is present only in between numbers, like 1//2
 
     as = arguments(rule)
-    data.num == first(as) && data.den == last(as) && return matches
+    data.num == first(as) && data.den == last(as) && return σs
     # r.num == rule.args[2] && r.den == rule.args[3] && return matches::MatchDict
-    return ϟ
+    return MatchDict[]
 end
 
-function has_specialcased_op(data, rule, matches)
+function has_specialcased_op(data, rule, σs)
     arg_data = arguments(data)
     arg_rule = arguments(rule)
     opᵣ, opₛ = operation(rule), Symbol(operation(data))
@@ -302,9 +351,10 @@ function has_specialcased_op(data, rule, matches)
     if opᵣ === :^
         # try first normal checks
         if (opₛ === :^)
-            rdict = ceoaa(arg_data, arg_rule, matches)
-            rdict !== ϟ && return rdict::MatchDict
+            σ′s = ceoaa(arg_data, arg_rule, σs)
+            !isempty(σ′s) && return σ′s
         end
+
         # try building frankestein arg_data (fad)
         fad = []
 
@@ -338,11 +388,11 @@ function has_specialcased_op(data, rule, matches)
             push!(fad, arg_data[1], 1//2)
 
         else
-            return ϟ::MatchDict
+            return MatchDict[]
 
         end
 
-        return ceoaa(fad, arg_rule, matches)::MatchDict
+        return ceoaa(fad, arg_rule, σs)
 
     elseif opᵣ === :sqrt
 
@@ -351,10 +401,10 @@ function has_specialcased_op(data, rule, matches)
         elseif (opₛ === :^) && (arg_data[2] === 1//2)
             tocheck = arg_data[1]
         else
-            return ϟ::MatchDict
+            return MatchDict[]
         end
 
-        return ceoaa(tocheck, arg_rule, matches)::MatchDict
+        return ceoaa(tocheck, arg_rule, σs)
 
     elseif opᵣ === :exp
 
@@ -363,14 +413,14 @@ function has_specialcased_op(data, rule, matches)
         elseif (opₛ === :^) && (arg_data[1] === ℯ)
             tocheck = arg_data[2]
         else
-            return ϟ::MatchDict
+            return MatchDict[]
         end
 
-        return ceoaa(tocheck, arg_rule, matches)::MatchDict
+        return ceoaa(tocheck, arg_rule, σs)
     end
 end
 
-function neim_rewrite(data, rule, matches)
+function neim_rewrite(data, rule)
 
     neim_pass = false
 
@@ -429,69 +479,67 @@ function neim_rewrite(data, rule, matches)
 end
 
 function has_any_segment(opₛ, arg_data,
-                         opᵣ, arg_rule, matches)
+                         opᵣ, arg_rule, σ)
 
     seg, notseg = _groupby(is_segment, arg_rule)
     n,m = length(arg_data), length(notseg)
 
     if m > n
-        @show m,n
-        return ϟ
+        return MatchDict[]
     elseif m == 0
-        @show m
         # assign all to the first!
         var = varname(first(seg))
         val = tuple(arg_data...) #Expr(:call, opₛ, arg_data...)
-        val′ = get(matches, var, missing)
-        if ismissing(val′)
-            matches = MatchDict(matches, var, val)
-            return matches
+        σ′s = MatchDict[]
+        for σ ∈ σs
+            val′ = get(σ, var, missing)
+            if ismissing(val′)
+                σ′ = MatchDict(σ, var, val)
+                push!(σ′s,σ′)
             elseif val == val′
-            return matches
-        else
-            return ϟ
-        end
+                push!(σ′s,σ)
+            end
+        end# XXX?
     elseif 0 < m ≤ n
-            for ind ∈ combinations(1:n, m)
-                sub′ = mterm(opₛ, arg_data[ind])
-                pat′ = mterm(opᵣ, notseg)
-                @show sub′, pat′
-                m = check_expr_r(sub′, pat′, matches)
-                @show m, ind
-                if m != ϟ
+        σ′′s = MatchDict[]
+        for ind ∈ combinations(1:n, m)
+            sub′ = mterm(opₛ, arg_data[ind])
+            pat′ = mterm(opᵣ, notseg)
+
+            for σ ∈ σs
+                σ′s = check_expr_r(sub′, pat′, [σ])
+                if !isempty(σ′s)
                     # we found a match, assign the rest to first segment
-                    var = varname(first(seg))
-                    val = length(ind) < n ?
-                        tuple(arg_data[setdiff(1:n, ind)]...) :
-                        ()
-                    #                        mterm(opₛ, arg_data[setdiff(1:n, ind)])  :
-                    #                        missing
-                    val′ = get(matches, var, missing)
-                    if ismissing(val′)
-                        m = MatchDict(m, var, val)
-                        return m
-                    elseif val == val′
-                        return m
-                    else
-                        # continue the hunt
+                    for σ′ ∈ σ′s
+                        var = varname(first(seg))
+                        val = length(ind) < n ?
+                            tuple(arg_data[setdiff(1:n, ind)]...) :
+                            ()
+                        val′ = get(σ′, var, missing)
+                        if ismissing(val′)
+                            σ′ = MatchDict(σ′, var, val)
+                            push!(σ′′s, σ′)
+                        elseif val == val′
+                            push!(σ′′s, σ)
+                        else
+                            # continue the hunt
+                        end
                     end
                 end
             end
+        end
+        return σ′′s
     end
-    return  ϟ # failed
 end
 
-function check_commutative(opₛ, arg_data,
-                           opᵣ, arg_rule, matches)
+function check_commutative(arg_data, arg_rule, σs)
     # commutative checks
-    all_matches = []
-    for perm_arg_data in permutations(arg_data) # is the same if done on arg_rule right?
-        matches_this_perm = ceoaa(perm_arg_data, arg_rule, matches)
-        matches_this_perm !== ϟ && push!(all_matches, matches_this_perm)  # return matches_this_perm
-    end # else try with next perm
-    isempty(all_matches) && return  ϟ
-    @show :XXXXC, all_matches
-    return first(all_matches)
+    σ′′s = MatchDict[]
+    for arg_data′ in permutations(arg_data)
+        σ′s = ceoaa(arg_data′, arg_rule, σs)
+        !isempty(σ′s) && (σ′′s = union(σ′′s, σ′s))
+    end
+    return σ′′s
 end
 
 ## ---------------
@@ -519,7 +567,7 @@ function rewrite(matches::MatchDict, rhs::Expr)
     # otherwise call recursively on arguments and then reconstruct expression
     args = [rewrite(matches, a) for a in arguments(rhs)]
     ## XXX this isn't correct if args is not Expr based
-    return maketerm(Expr, operation(rhs), args, nothing)
+    return maketerm(eltype(args), operation(rhs), args, nothing)
 end
 
 # called every time in the rhs::Expr there is a symbol like
@@ -536,10 +584,8 @@ rewrite(matches::MatchDict, rhs::QuoteNode) = rhs::QuoteNode
 function _replace(sub, rule::Pair{Expr, Expr})
     pat = first(rule)
     sub′ = Meta.parse(string(sub))
-    m = check_expr_r(sub′, pat, MatchDict())
-
-    m == ϟ && return nothing
-
+    m = __match(pat, sub′)
+    isnothing(m) && return m
     r = rewrite(m, last(rule))
     r
 end
