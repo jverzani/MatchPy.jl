@@ -24,7 +24,7 @@
 # t matches s if there is a match with σ(t) = s
 soperation(f::Any) = Symbol(operation(f))
 
-# θ \theta  is an iterator of substiutions;
+# θ \theta  is an iterator of substitutions;
 # default is (match_dict(),)
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     ##_@show :m11, ss, p, fₐ
