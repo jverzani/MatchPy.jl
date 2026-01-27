@@ -1,9 +1,3 @@
-#=
-module SyntacticMatch
-
-using TermInterface
-include("utils.jl")
-=#
 function syntactic_match(s, p, σ = match_dict())
 
     if !has_𝑋(p) # no wild
@@ -69,8 +63,3 @@ function syntactic_match(s, p, σ = match_dict())
 
     return σ
 end
-
-
-
-
-#end

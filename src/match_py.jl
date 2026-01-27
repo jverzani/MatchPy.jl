@@ -21,152 +21,6 @@
 # Xˢᵗᵃʳ    star variables -- `_is_Star`
 
 
-#meval(x) = Main.eval(x)
-#=
-function mterm(T, f::Union{Symbol, Expr}, ss, md=nothing)
-    if f ∈ (:(+), :(*)) && length(ss) == 1
-        return only(ss)
-    else
-        Expr(:call, f, ss...)
-    end
-end
-mterm(T::Type{Symbol}, f::Symbol, ss, md=nothing) = mterm(Expr, f, ss)
-mterm(T::Type{Real}, f::Symbol, ss, md=nothing) = mterm(Expr, f, ss)
-function mterm(T, f::Any, ss, md=nothing)
-    ##_@show T, f, ss
-    maketerm(T,f,ss,md)
-end
-=#
-
-
-# check for types
-#_is_𝐹₀(::Any) = false  # 𝐹ₙ is arity of function; this is no function
-#_is_𝐿(x::Any) =  false #
-#_is_Wild(x::Any) = false # a single match (slot)
-#=
-_is_DefSlot(x::Any) = false # possible default
-DefSlotDefaults = Base.ImmutableDict(:(+) => 0, :(*) => 1, :(^) => 1)
-_is_Slot(x::Any) = _is_Wild(x) || _is_DefSlot(x)
-_is_Plus(x::Any) = false # atleast one
-_is_Star(x::Any) = false    # also segment variable
-_is_𝑋(x) = _is_Wild(x) || _is_Plus(x) || _is_Star(x) #
-=#
-#has_predicate(::Any) = false
-
-#=
-_nameof(x::Any) = nameof(x)
-_nameof(x::Symbol) = x
-_nameof(x::Expr) = x
-=#
-# some guards
-#istrue(::Any) = true
-#isfalse(::Any) = false
-
-# we use these conventions for variables for SymbolicUtils compatability
-# Wild (slot):  ~x
-# DefSlot:  ~!x
-# Plus: ~~~x
-# Star: ~~x
-# ALL are regularized to :x in a match
-
-#=
-_is_𝑋(x::Expr) = iscall(x) && first(x.args) === :(~)
-=#
-#_is_𝑋(x::Expr) = is_𝑋(x)
-
-
-#=
-function _is_Wild(x::Expr)
-    _is_𝑋(x) || return false
-    _, x = x.args
-    iscall(x) && return false
-    return true
-end
-=#
-#_is_Slot(x::Any) = _is_Wild(x) || is_defslot(x)
-
-#=
-function _is_DefSlot(x::Expr)
-    _is_𝑋(x) || return false
-    _, arg = x.args
-    is_operation(:(!))(arg) && return true
-    return false
-end
-=#
-#_is_DefSlot(x::Expr) = is_defslot(x)
-#=
-function has_DefSlot(pat)
-    iscall(pat) || return false
-    op = operation(pat)
-    if op ∈ (:(+), :(*))
-        any(is_defslot, arguments(pat)) && return true
-    elseif op == :(^)
-        a, b = arguments(pat)
-        is_defslot(b) && return true
-    end
-    return false
-end
-=#
-# ~~~x (1 or more)
-#=
-function _is_Plus(x::Expr)
-    _is_𝑋(x) || return false
-    _,x = x.args
-    _is_𝑋(x) || return false
-    _,x = x.args
-    _is_𝑋(x) || return false
-    return true
-end
-=#
-#_is_Plus(x::Expr) = is_plus(x)
-
-# ~~x (0, 1, or more)
-#=
-function _is_Star(x::Expr)
-    _is_𝑋(x) || return false # first is ~
-    _,x = x.args
-    _is_𝑋(x) || return false # second is ~
-    _,x = x.args
-    _is_𝑋(x) && return false
-    return true
-end
-=#
-#_is_Star(x::Expr) = is_segment(x)
-
-# sequence variables are star or plus
-#=
-function _is_sequence(x::Expr)
-    (is_segment(x) || is_plus(x)) && return true
-    return false
-end
-=#
-
-# predicates
-#=
-isassociative(::typeof(+)) = true
-isassociative(::typeof(*)) = true
-
-iscommutative(::typeof(+)) = true
-iscommutative(::typeof(*)) = true
-=#
-#=
-function _setvalue(d, vv::Pair)
-    k, v = vv
-    haskey(d, k) && return d
-    Base.ImmutableDict(d, vv)
-end
-_setvalue(d, var, value) = _setvalue(d, var => value)
-=#
-#const FAIL_DICT = nothing
-#const ϟ = FAIL_DICT # \koppa
-const ∅ = ()
-
-#=
-function union_merge(θ, σ′)
-    (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
-end
-=#
-
 # t matches s if there is a match with σ(t) = s
 soperation(f::Any) = Symbol(operation(f))
 
@@ -453,94 +307,6 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     else
         return ((ss, ps, σ),)
     end
-
-    #=
-    # this checks for defslots amongst arguments
-    # and in powers
-    θ₁ = [(ss, ps, σ)]
-    if fₐ ∈ (:(+), :(*))
-        ps′, ps′′ = _groupby(is_defslot, ps)
-        if !isempty(ps′)
-            for p ∈ ps′
-                σ′ = merge_match(σ, match_dict(p => defslot_op_map[fₐ]))
-                push!(θ₁, (ss, ps′′, σ′))
-            end
-        end
-
-        θ₂ = []
-        for a ∈ θ₁
-            push!(θ₂, a)
-            ss, ps, σ = a
-            ps′, ps′′ = _groupby(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
-            if !isempty(ps′)
-                for p ∈ ps′
-                    a, b = arguments(p)
-                    is_defslot(a) && error("not supposed to be")
-                    σ′ = merge_match(σ, match_dict(b => defslot_op_map[:(^)]))
-                    push!(θ₂, (ss, vcat(a, ps′′), σ′))
-                end
-            end
-        end
-        θ₁ = θ₂
-    end
-    ##_@show σ, collect(θ₁)
-    return θ₁
-    =#
-    #=
-    # XXX
-    # at top level
-    ps′, ps′′ = _groupby(is_defslot, ps)
-
-    # this just handles one part
-    if !isempty(ps′)
-        # deal with a defslot
-        # defslot has default *and* no default
-        σ′ = match_dict(only(ps′) => defslot_op_map[fₐ])
-        iscompatible(σ, σ′) || return nothing
-        σ′′ = merge_match(σ, σ′)
-        θ = match_commutative_sequence(ss, ps′′, fₐ, (σ′′,))
-    else
-        θ = (σ,)
-        ps′′ = ps
-    end
-
-    # XXX what do do with defslot? Need two paths:
-    # one where we remove and set to default
-    # one where we treat as Wild
-
-    ps′′ = ps
-    θ = (σ,)
-    # at next level
-    ps′, ps′′ = _groupby(has_DefSlot, ps′′)
-    isempty(ps′) && return ((ss, ps′′, σ) for σ ∈ Θ)
-    # look to match
-    itr = Iterators.product(ps′, ss)
-    i = Iterators.map(itr) do (p, s)
-        # remove defslot from p,  check match
-        op = operation(p)
-        if op ∈ (:(+), :(*))
-            p′, p′′ = _groupby(is_defslot, arguments(p))
-            𝑝 = Expr(:call, op, p′′...)
-            σ₀ = match_dict(only(p′) => defslot_op_map[op])
-            iscompatible(σ, σ₀) || return nothing
-            σ′ = merge_match(σ, σ₀)
-            θ′′ = match_one_to_one((s,), 𝑝, fₐ, (σ′,))
-        elseif op == :(^)
-            𝑝, p′ = arguments(p)
-            is_defslot(𝑝) && error("Not supposed to be")
-            is_defslot(p′) || error("Not supposed to be")
-            σ₀ = match_dict(p′ => defslot_op_map[op])
-            iscompatible(σ, σ₀) || return nothing
-            σ′ = merge_match(σ, σ₀)
-            θ′′ = match_one_to_one((s,), 𝑝, fₐ, (σ′,))
-        end
-        isnothing(θ′′) && return nothing
-        ss′, ps′ = setdiff(ss, (s,)), setdiff(ps, (p,))
-        return ((ss′, ps′, σ) for σ ∈ θ′′)
-    end
-
-    return Iterators.flatten(Iterators.filter(!isnothing, i))
-    =#
 end
 
 # match non_variable_patterns
@@ -667,7 +433,7 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
 
     h = isnothing(fc) ? identity :
         (as) -> pterm(fc, as)
-    ##_##_@show :msv,vars, svars, σ
+
     # rename
     ssᵥ = [v for (k,v) in ds] # last.(ds)
     i = ntuple(zero, Val(n))
@@ -714,9 +480,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
                 end
                 iscompatible(σ′, σ′′) || break
                 σ′ = merge_match(σ′, σ′′)
-#                for kv ∈ σ′′
-#                    σ′ = match_dict(σ′, kv)
-#                end
             end
         end
         iscompatible(σ, σ′) || return nothing
