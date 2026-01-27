@@ -1,3 +1,4 @@
+#=
 module Rule2a
 
 include("utils.jl")
@@ -7,7 +8,7 @@ include("utils.jl")
 
 using Combinatorics: combinations, permutations
 using TermInterface
-
+=#
 
 # TODO
 # * rule condition inside the process? leads to faster cycling trough all the rules?
@@ -117,7 +118,7 @@ The `__replace` function can be used to create a new expression based on the mat
 ##
 
 ## Interface
-
+#=
 __eachmatch(pat::Union{Symbol, Expr}, sub) = check_expr_r(sub, pat, [MatchDict()])
 
 function __match(pat::Union{Symbol, Expr}, sub)
@@ -175,7 +176,7 @@ __rewrite(matches::MatchDict, rhs::String) = rhs::String
 __rewrite(matches::MatchDict, rhs::LineNumberNode) = nothing::Nothing
 __rewrite(matches::MatchDict, rhs::QuoteNode) = rhs::QuoteNode
 
-
+=#
 # SymbolicUtils._isone -> _isone
 # SymbolicUtils.unwrap_const -> unwrap_const
 
@@ -502,12 +503,16 @@ function has_any_segment(𝑜𝑝ₛ, arg_data,
         # assign all to the first!
         σ′s = MatchDict[]
 
-        var = varname(first(seg))
+        var′, vars... = seg
+        var = varname(var′)
         val = tuple(arg_data...) #Expr(:call, opₛ, arg_data...)
         for σ ∈ σs
             val′ = get(σ, var, missing)
             if ismissing(val′)
                 σ′ = match_dict(σ, var => val)
+                for v ∈ varname.(vars)
+                    σ′ = match_dict(σ′, v => ())
+                end
                 push!(σ′s,σ′)
             elseif val == val′
                 push!(σ′s,σ)
@@ -575,7 +580,7 @@ function check_commutative(arg_data, arg_rule, σs)
 end
 
 ## ---------------
-
+#=
 """
 recursively traverse the rhs, and if it finds a expression like:
 Expr
@@ -601,6 +606,6 @@ function rewrite(matches::MatchDict, rhs::Expr)
     ## XXX this isn't correct if args is not Expr based
     return maketerm(eltype(args), operation(rhs), args, nothing)
 end
+=#
 
-
-end
+#end

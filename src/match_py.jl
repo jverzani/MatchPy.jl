@@ -1,7 +1,3 @@
-module Match_Py
-using TermInterface
-
-include("utils.jl")
 
 # implement algorithm of matchpy paper through Ch. 3
 # from SimpleExpressions but modified to work with expressions for patterns
@@ -209,13 +205,13 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
             return ∅
         end
 
-        if is_slot_or_defslot(var) && !isnothing(fₐ) # regular and associative function
+        if is_slot_or_defslot(p) && !isnothing(fₐ) # regular and associative function
             value = pterm(fₐ, ss)
             σ′ = match_dict(var => value)
         else
             σ′ = match_dict(var => ss)
         end
-        if is_segment(var) || n ≥ 1
+        if is_segment(p) || n ≥ 1
             return union_merge(θ, σ′)
         end
 
@@ -271,7 +267,7 @@ end
 
 # 3.3 match non-commutative function
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
-   ## @show :ms, ss, ps, fₐ
+    ## @show :ms, ss, ps, fₐ
     n, m = length(ss), length(ps)
     nstar = count(is_segment, ps)
     m - nstar > n && return ∅
@@ -567,7 +563,7 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
     n == 0 && return ((ss, ps, (σ,)),)
     n ≤ length(ss′) || return ()
 
-    i = Combinatorics.permutations(1:length(ss′), n)
+    i = permutations(1:length(ss′), n)
 
     ii = Iterators.map(i) do inds
         𝑠𝑠′′  = vcat(ss′′, [sᵢ for (i,sᵢ) ∈ enumerate(ss′) if i ∉ inds])
@@ -638,7 +634,7 @@ end
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
-   ## @show :msv, ss, ps, fc
+    ##@show :msv, ss, ps, fc
     isempty(ps) && return (σ, )
 
     out =  _match_matched_variables(ss, ps, σ)
@@ -763,8 +759,4 @@ function _split_take(ds, dp)
         (σ, ds′)
     end
     iii = Iterators.filter(!isnothing, ii)
-end
-
-
-
 end

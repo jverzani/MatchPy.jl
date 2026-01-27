@@ -1,11 +1,10 @@
 using Test
 using MatchPy
 using MatchPy: _eachmatch, _replace, _match
-using MatchPy: syntactic_match, match_one_to_one, match_sequence, match_commutative_sequence
-S = M = MatchPy
+MP, R2 = MatchPy.MP, MatchPy.R2
 using TermInterface
 
-function M.isassociative(x::Symbol)
+function MatchPy.isassociative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₐ") && return true
@@ -13,7 +12,7 @@ function M.isassociative(x::Symbol)
     false
 end
 
-function M.iscommutative(x::Symbol)
+function MatchPy.iscommutative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₘ") && return true
@@ -144,10 +143,14 @@ end
     ]
 
     for (;pat, sub, len) ∈ ts
-        u = collect(_eachmatch(pat, sub))
+        @show pat, sub
+        σs = _eachmatch(pat, sub, MP())
+        γs = _eachmatch(pat, sub, R2())
+        u = collect(σs)
         @test length(u) == len
+        @test length(γs) ≤ length(u)
+        length(γs) < length(u) && @show :smaller
     end
-
 end
 
 @testset "match" begin

@@ -2,8 +2,8 @@
 abstract type MatchType end
 struct MP <: MatchType end
 struct R2 <: MatchType end
+
 ### ---- match, eachmatch, replace
-## --- interface: replacd, match, eachmatch ---
 
 function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=R2())
     σs = _eachmatch(pat, sub, M)
@@ -18,15 +18,15 @@ _eachmatch(pat::Expr, ex) = _eachmatch(pat, ex, R2())
 
 function _eachmatch(pat::Expr, ex, M::MP)
     if has_𝑋(pat)
-        return Match_Py.match_one_to_one([ex], pat)
+        return match_one_to_one([ex], pat)
     else
-        σ = SyntacticMatch.syntactic_match(ex, pat)
+        σ = syntactic_match(ex, pat)
         return isnothing(σ) ? () : (σ,)
     end
 end
 
 function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R2)
-    Rule2a.check_expr_r(sub, pat, [MatchDict()])
+    check_expr_r(sub, pat, [MatchDict()])
 end
 
 
@@ -82,6 +82,10 @@ There are different methods depending on the type of key in the the `key => valu
 The first three are straightforward. First, for function heads:
 
 ```@repl replace
+julia> using SymEngine
+
+julia> using MatchPy; import MatchPy: _replace
+
 julia> @vars x p
 (x, p)
 
@@ -138,9 +142,6 @@ Wildcards have a naming convention:
 * `~~x` match 1 or more variables
 
 ```@repl replace
-julia> @symbolic x p; @symbolic x_
-(x_,)
-
 julia> _replace(cos(pi + x^2), :(cos(pi + ~x)) => :(-cos(~x)))
 -cos(x ^ 2)
 
