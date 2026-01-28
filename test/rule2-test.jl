@@ -91,7 +91,7 @@ end
         @test σ[:n] == -1
     end
 
-    pat = :((~!c)*(~a)^(~!m)*(~b)^(~!n)) # r8 w/o predicat
+    pat = :((~!c)*(~a)^(~!m)*(~b)^(~!n)) # r8 w/o predicate
     σs = MatchPy._eachmatch(pat, sub)
     @test length(σs) == 2
     for σ ∈ σs
