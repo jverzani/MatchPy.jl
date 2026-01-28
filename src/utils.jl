@@ -1,6 +1,7 @@
 # A substitution is a collection of pairs 𝑋 -> 𝐺
 const MatchDict = Base.ImmutableDict{Symbol, Any}
 FAIL_DICT = MatchDict(:_fail,0)
+∅ = ()
 
 match_dict() = MatchDict()
 
@@ -11,8 +12,11 @@ end
 
 function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
-        # haskey(σ, k)?
-        σ = MatchDict(σ, k, v)
+        if haskey(σ, k)
+            σ[k] != v && error("repeated key with different value")
+        else
+            σ = MatchDict(σ, k, v)
+        end
     end
     σ
 end
@@ -37,6 +41,7 @@ function merge_match(σ::MatchDict, σ′::MatchDict)
     end
     σ
 end
+merge_match(σ::Tuple, σ′::MatchDict) = σ′
 
 function union_merge(θ, σ′)
     (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
@@ -61,8 +66,8 @@ as_symbol_or_literal(x) = x
 
 # create a term for a pattern (pterm) or a subject (sterm)
 # the latter might involve a symbolic type
-function pterm(op::Symbol, args)
-    if length(args) == 1 && op ∈(:+, :*, :^, :/)
+function pterm(op::Symbol, args; elide=true)
+    if elide && length(args) == 1 && op ∈(:+, :*, :^, :/)
         return only(args)
     else
         Expr(:call, op, args...)
@@ -219,5 +224,10 @@ function map_matched_head(ex, is_match, f)
     op = operation(ex)
     is_match(op) && (op = f(op))
     args′ = map_matched_head.(arguments(ex), is_match, f)
-    return sterm(typeof(first(args′)), op, args′)
+    T = typeof(first(args′))
+    if T <: Expr || T <: Symbol || T <: Number
+        return pterm(Symbol(op), args′)
+    else
+        return sterm(T, op, args′)
+    end
 end
