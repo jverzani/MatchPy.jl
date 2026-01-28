@@ -1,7 +1,7 @@
 function syntactic_match(s, p, σ = match_dict())
-
     if !has_𝑋(p) # no wild
-        return as_symbol_or_literal(s) == p ? σ : ϟ
+        out = (as_symbol_or_literal(s) == p) ? σ : nothing
+        return out
     elseif is_slot(p)
         var = varname(p)
         if haskey(σ, var)

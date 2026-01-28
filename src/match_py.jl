@@ -27,7 +27,7 @@ soperation(f::Any) = Symbol(operation(f))
 # θ \theta  is an iterator of substitutions;
 # default is (match_dict(),)
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
-    ##_@show :m11, ss, p, fₐ
+   ## @show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)     # constant symbol
         # match if p == ss(1)
@@ -76,7 +76,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
         asₚ = copy(arguments(p))
 
         if any(is_defslot, asₚ)
-            ##_@show :defslot
+           ## @show :defslot
             # Defslots -- first check if there is a match with a slot variable
             # if so, return that. Else, replace with default value and move on.
 
@@ -121,7 +121,7 @@ end
 
 # 3.3 match non-commutative function
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
-    ## @show :ms, ss, ps, fₐ
+   ## @show :ms, ss, ps, fₐ
     n, m = length(ss), length(ps)
     nstar = count(is_segment, ps)
     m - nstar > n && return ∅
@@ -175,7 +175,7 @@ end
 ## ----
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-    ##_@show :mcs, ss, ps, fₐ
+   ## @show :mcs, ss, ps, fₐ
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -230,7 +230,7 @@ end
 
 # return trimmed ss, ps or nothing
 function _match_constant_patterns(ss, ps)
-    ##_@show :mcp, ss, ps
+   ## @show :mcp, ss, ps
     # XXX what about mismatched match?
     # XXX clean this up!
 
@@ -252,12 +252,12 @@ end
 # trims down ss, ps
 # returns (ss,ps) or nothing
 function  _match_matched_variables(ss, ps, σ)
-    ##_@show :mmv, ss, ps
+   ## @show :mmv, ss, ps
     # subtract from, ps, ss previously matched variables
     (isnothing(σ) || isempty(σ)) && return (ss, ps)
 
     for (p,s) ∈ σ
-        for _ in 1:count(==(p), ps)
+        for _ in 1:count(pᵢ -> varname(pᵢ) == p, ps)
             # delete s from ss or return nothhing
             itr = applicable(iterate, s) ? s : [s] #isa(s, Tuple) ? s : (s,)
             for si ∈ itr
@@ -268,14 +268,15 @@ function  _match_matched_variables(ss, ps, σ)
         end
     end
 
-    ps = [v for v in ps if v ∉ keys(σ)] #v ∉ first.(σ)) # XXX ?
+    ps = [v for v in ps if varname(v) ∉ keys(σ)] #v ∉ first.(σ)) # XXX ?
     ss, ps
+
 end
 
 
 # match defslot patterns early
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
-    ##_@show :mds, ss, ps, fₐ
+   ## @show :mds, ss, ps, fₐ
 
     if any(is_defslot, ps)
         ##_@show :XXX
@@ -316,7 +317,6 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
 
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
-
     ss, ps = out
 
     ps′, ps′′ = _groupby(!is_𝑋, ps)
@@ -362,7 +362,7 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
     isempty(ps) && return ((ss, ps, σ), )
 
     out =  _match_matched_variables(ss, ps, σ)
-    isnothing(out) && return nothing #∅
+    isnothing(out) && return ∅
 
     ss, ps = out
     # fₐ is  commutative, maybe associative
@@ -400,7 +400,7 @@ end
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
-    ##@show :msv, ss, ps, fc
+   ## @show :msv, ss, ps, fc
     isempty(ps) && return (σ, )
 
     out =  _match_matched_variables(ss, ps, σ)
@@ -511,14 +511,14 @@ function _split_take(ds, dp)
     i = Iterators.product((1:n for _ in 1:k)...)
     ii = Iterators.map(i) do inds
         ds′ = copy(ds)
-        σ = ()
+        σ = ∅
         for (i, (p, np)) ∈ zip(inds, (dp))
             s, ns = ds′[i]
-            np > ns && (σ = ϟ; break) # won't fit
+            np > ns && (σ = ∅; break) # won't fit
             ds′[i] = s => (ns - np)
             σ = merge_match(σ, match_dict(varname(p) => s)) # XXX? Check compatible?
         end
-        σ == ϟ && return nothing
+        σ == ∅ && return nothing
         (σ, ds′)
     end
     iii = Iterators.filter(!isnothing, ii)

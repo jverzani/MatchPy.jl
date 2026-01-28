@@ -53,7 +53,7 @@ function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=R2())
 
     # otherwise call recursively on arguments and then reconstruct expression
     args = [rewrite(σ, a, M) for a ∈  arguments(rhs)]
-    return pterm(operation(rhs), args)
+    return pterm(operation(rhs), args; elide=false)
 end
 
 rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
@@ -194,7 +194,7 @@ function _replace(ex, uv::Pair, M::MatchType=R2())
     isa(u, Expr) && return _replace_arguments(ex, u, v, M)
 
     # is u function replace head
-    isa(u, Function) && return map_matched_head(ex, ==(u), _ -> v)
+    isa(u, Function) && return map_matched_head(ex, ==(Symbol(u)), _ -> v)
 
     # is u variable, replace exact
     return map_matched(ex, ==(u), _ -> v)

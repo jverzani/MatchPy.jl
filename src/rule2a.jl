@@ -141,10 +141,9 @@ function only_argument_is_segment(data, rule, σs)
     opₛ, opᵣ = Symbol(operation(data)), operation(rule)
     opₛ == opᵣ || return MatchDict[]
 
-
     # return the whole data (not only vector of arguments as in rule1)
-    σ′ = match_dict(varname(only(arguments(rule))) => data)
-    union_merge(σs, σ′)
+    σ′ = match_dict(varname(only(arguments(rule))) => arguments(data))
+    collect(union_merge(σs, σ′))
 end
 
 function has_rational(data, rule, σs)
@@ -196,7 +195,9 @@ function different_powers(data, rule, σs)
             # if data is of the alternative form 1/exp(...),
             # it might match ℯ ^ -...
             m = arg_data[2] # like b^m
-            push!(fad, ℯ, -1*arguments(m)[1])
+            pow = first(arguments(m))
+
+            push!(fad, ℯ, sterm(typeof(pow), -, (pow,))) #-1*arguments(m)[1])
 
         elseif is1divsmth
             # if data is of the alternative form 1/(...),
@@ -230,8 +231,8 @@ function different_powers(data, rule, σs)
     elseif opᵣ === :sqrt
         if (opₛ === :sqrt)
             tocheck = arg_data # normal checks
-        elseif (opₛ === :^) && (ϟ(arg_data[2]) == 1//2)
-            tocheck = b
+        elseif (opₛ === :^) && (ϟ(arg_data[2]) == :(1//2)) #1//2)
+            tocheck = (b,)
         else
             return MatchDict[]
         end
@@ -239,12 +240,11 @@ function different_powers(data, rule, σs)
         return ceoaa(tocheck, arg_rule, σs)
 
     elseif opᵣ === :exp
-
         if (opₛ === :exp)
             tocheck = arg_data # normal checks
-        elseif (opₛ === :^) && (ϟ(b) == ℯ)
+        elseif (opₛ === :^) && (ϟ(b) == :ℯ)
             m = arg_data[2]
-            tocheck = m
+            tocheck = (m,)
         else
             return MatchDict[]
         end
@@ -254,22 +254,19 @@ function different_powers(data, rule, σs)
 end
 
 function neim_rewrite(data, rule)
-
     neim_pass = false
 
     arg_rule, arg_data = arguments(rule), arguments(data)
     opᵣ, opₛ = operation(rule), Symbol(operation(data))
-    if (opᵣ === :*) && any(is_operation(:^), arg_rule) && opₛ === :/
+    if (opᵣ === :*) && opₛ === :/ && any(is_operation(:^), arg_rule)
         #x->(isa(x,Expr) && x.head===:call && x.args[1]===:^), arg_rule) && (operation(data)===/)
 
         neim_pass = true
 
         n = arg_data[1]
         d = arg_data[2]
-
         # then push the denominator of data up with negative power
         sostituto = []
-
         if iscall(d) && opₛ == :^ #(operation(d)==^)
 
             a, b, c... =  arg_data
@@ -282,6 +279,11 @@ function neim_rewrite(data, rule)
                 val = sterm(typeof(factor), ^, (factor, -1))
                 push!(sostituto, val)
             end
+        elseif iscall(d) && soperation(d) == :^
+            a,b = arguments(d)
+            m = sterm(typeof(d), -, (b,))
+            val = sterm(typeof(d), ^, (a, m))
+            push!(sostituto, val)
         else
             val = sterm(typeof(d), ^, (d, -1))
             push!(sostituto, val)
