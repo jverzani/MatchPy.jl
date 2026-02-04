@@ -13,7 +13,7 @@ end
 function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
         if haskey(σ, k)
-            σ[k] != v && error("repeated key with different value")
+            σ[k] != v && return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
         else
             σ = MatchDict(σ, k, v)
         end
@@ -23,7 +23,7 @@ end
 
 #  σ △ σ′ (\bigtriangleup) for every x in the intersection of the domains has same value
 function iscompatible(σ::MatchDict, σ′::MatchDict)
-        isempty(σ) && return true
+    isempty(σ) && return true
     isempty(σ′) && return true
     for k in keys(σ)
         if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
@@ -63,10 +63,15 @@ as_symbol_or_literal(x::Union{Real, Symbol, Expr}) = x
 as_symbol_or_literal(x) = x
 ϟ = as_symbol_or_literal #\koppa[tab]
 
+# need to compare x and p when p is from an expression
+# trick -- SymEngine.Basic <: Number
+eq_expr(a, p::Number) = isequal(a,p)
+eq_expr(a::Number, p::Symbol) = false
+eq_expr(a, p::Symbol) = isequal(Symbol(a),p)
 
 # create a term for a pattern (pterm) or a subject (sterm)
 # the latter might involve a symbolic type
-function pterm(op::Symbol, args; elide=true)
+function pterm(op::Union{Expr,Symbol}, args; elide=true)
     if elide && length(args) == 1 && op ∈(:+, :*, :^, :/)
         return only(args)
     else
@@ -77,9 +82,10 @@ end
 # subject term
 function sterm(T, op, args)
     _isexpr = T ∈ (Expr, Symbol, Real)
-
-    if _isexpr && !isa(op, Symbol)
-        op = nameof(op)
+    if _isexpr
+        !isa(op, Symbol) && (op = nameof(op))
+    elseif !isexpr
+        isa(op, Symbol) && (op = eval(op))
     end
     _isexpr ? pterm(op, args) : op(args...)
 end
@@ -112,8 +118,9 @@ is_slot(x::Any) = false
 is_defslot(x::Any) = false
 is_segment(x::Any) = false
 is_plus(x::Any) = false
+is_op(x::Any) = false
 
-const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1)
+const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
 
 # Expr
 is_𝑋(x::Expr) = (iscall(x) && first(x.args) === :(~))  ||
@@ -134,9 +141,15 @@ function is_slot(x::Expr)
 end
 
 function is_defslot(x::Expr)
+    #if is_operation(:^)(x)
+    #    _,x = arguments(x)
+    #end
+
     is_𝑋(x) || return false
     _, arg = x.args
     is_operation(:(!))(arg) && return true
+
+
     return false
 end
 
@@ -144,7 +157,8 @@ is_slot_or_defslot(x) = is_slot(x) || is_defslot(x)
 
 function is_segment(x::Expr)
     is_𝑋(x) || return false # first is ~
-    _,x = x.args
+    h,x = x.args
+    is_𝑋(h) && return false # an op
     is_𝑋(x) || return false # second is ~
     _,x = x.args
     is_𝑋(x) && return false
@@ -161,7 +175,10 @@ function is_plus(x::Expr)
     return true
 end
 
-
+# (~G)(~x)
+function is_op(x::Expr)
+    is_𝑋(x) && iscall(x) && is_𝑋(operation(x))
+end
 
 # return symbol holding variable name
 varname(x::Symbol) = x
@@ -189,7 +206,7 @@ function has_predicate(x::Expr)
     if x.args[1] ∈ (:~, :!)
         has_predicate(x.args[2])
     else
-        length(x.args) == 2
+        length(x.args) == 2 && x.head==:(::)
     end
 end
 

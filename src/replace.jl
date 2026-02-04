@@ -45,7 +45,7 @@ function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=R2())
     if is_𝑋(rhs)
         var = varname(rhs)
         if haskey(σ, var)
-            return σ[var] # unwrap_const
+            return as_symbol_or_literal(σ[var]) # unwrap_const
         else
             error("No match found for variable $(var)") #it should never happen
         end
