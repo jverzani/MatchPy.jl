@@ -31,7 +31,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     n = length(ss)
     if !has_𝑋(p)     # constant symbol
         # match if p == ss(1)
-        n == 1 && as_symbol_or_literal(only(ss)) == p && return θ
+        n == 1 && eq_expr(only(ss), p) && return θ
         return ∅
     elseif is_slot_or_defslot(p) && isnothing(fₐ)  # regular variable
         if n == 1
@@ -235,11 +235,11 @@ function _match_constant_patterns(ss, ps)
     # XXX clean this up!
 
     Pconst = filter(!has_𝑋, ps)
-    ss′′ = as_symbol_or_literal.(ss)
+    # ss′′ = as_symbol_or_literal.(ss)
     for p ∈ Pconst
         inds = Int[]
-        for (i,sᵢ) ∈ enumerate(ss′′)
-            p == sᵢ && push!(inds, i)
+        for (i,sᵢ) ∈ enumerate(ss) # ss′
+            eq_expr(sᵢ, p) && push!(inds, i)
         end
         isempty(inds) && return nothing
         ss = ss[setdiff(1:length(ss), inds)]

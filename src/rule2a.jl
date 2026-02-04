@@ -15,8 +15,13 @@ end
 # TODO rules with symbols like ~b * a currently cause error
 
 # for when the rule contains a symbol, like ℯ, or a literal number
-function check_expr_r(data, rule::Union{Real, Symbol}, σs)
-    isequal(rule, ϟ(data)) && return σs
+function check_expr_r(data, rule::Real, σs)
+    isequal(rule, data) && return σs
+    return MatchDict[]
+end
+
+function check_expr_r(data, rule::Symbol, σs)
+    isequal(rule, Symbol(data)) && return σs
     return MatchDict[]
 end
 
@@ -25,6 +30,27 @@ function check_expr_r(data, rule::Expr, σs)
 
     if !iscall(rule)
         @show :what_is, rule
+    end
+    opᵣ = operation(rule)
+
+
+    if is_𝑋(opᵣ)
+        # peel off hope for single argument!
+        !iscall(data) && return MatchDict[] # XXX <---
+
+        value = iscall(data) ? operation(data) : identity
+        σ′ = match_dict(varname(opᵣ) => value)
+        σs = union_merge(σs, σ′)
+        arg_data, arg_rule = arguments(data), arguments(rule)
+        if length(arg_data) > 1
+            if iscommutative(opᵣ)
+                return check_commutative(arg_data, arg_rule, σs)
+            else
+                return ceoaa(arg_data, arg_rule, σs)
+            end
+        else
+            data, rule = (isempty(arg_data) ? arg_data : only(arg_data)), only(arg_rule)
+        end
     end
 
     # rule is a single variable
@@ -35,6 +61,9 @@ function check_expr_r(data, rule::Expr, σs)
 
     # if there is a deflsot in the arguments
     i = findfirst(is_defslot, arguments(rule))
+    @show rule, i, data
+
+
     if i !== nothing
         return has_defslot(i, data, rule, σs)
     end
@@ -53,11 +82,28 @@ function check_expr_r(data, rule::Expr, σs)
 
     !iscall(data) && return MatchDict[]
 
-    opᵣ, 𝑜𝑝ₛ = operation(rule), operation(data)
+
     # check opᵣ for special case
-    if opᵣ ∈ (:^, :sqrt, :exp)
+    opᵣ, 𝑜𝑝ₛ = operation(rule), operation(data)
+    @show opᵣ, 𝑜𝑝ₛ, rule, data, σs
+    if opᵣ ∈ (:^, :sqrt, :exp) || (opᵣ == :/ && Symbol(𝑜𝑝ₛ) == :*)
         return different_powers(data, rule, σs)
     end
+    if opᵣ === :/ && Symbol(𝑜𝑝ₛ) == :^
+        a, b = arguments(rule)
+        if is_operation(:^)(b) && isa(arguments(b)[2], Number)
+            a′, b′ = arguments(b)
+            rule′ = Expr(:call, :^, a′, -b′)
+        else
+            rule′ = Expr(:call, :^, b, -1)
+        end
+        if !(isa(a, Number) && isone(a))
+            rule′ = Expr(:call, :*, a, rule′)
+        end
+        return check_expr_r(data, rule′, σs)
+    end
+
+
 
     # gimmick to make Neim work in some cases:
     # * if data is a division transform it to a multiplication
@@ -71,11 +117,14 @@ function check_expr_r(data, rule::Expr, σs)
         return has_any_segment(𝑜𝑝ₛ, arg_data, opᵣ, arg_rule,  σs)
     end
 
+    @show length(arg_data), length(arg_rule)
+    @show data
+    @show rule, operation(rule)
     (length(arg_data) != length(arg_rule)) && return MatchDict[]
     if iscommutative(opᵣ)
-        return check_commutative(arg_data, arg_rule, σs)
+        σ′s = check_commutative(arg_data, arg_rule, σs)
+        return σ′s
     end
-
     # normal checks
     return ceoaa(arg_data, arg_rule, σs)
 end
@@ -83,6 +132,14 @@ end
 # check expression of all arguments
 # elements of arg_rule can be Expr or Real
 function ceoaa(arg_data, arg_rule, σs)
+    if all(is_𝑋, arg_rule) && !any(is_op, arg_rule)
+        nseg = count(is_segment, arg_rule) # no segment? need same wild
+        iszero(nseg) && count(is_slot, arg_rule) != length(arg_data) &&
+            return MatchDict[]
+    end
+    if (any(is_segment, arg_rule))
+        return has_any_segment(nothing, arg_data, nothing, arg_rule,  σs)
+    end
     σ′s = σs
     for (a, b) in zip(arg_data, arg_rule)
         σ′s = check_expr_r(a, b, σ′s)
@@ -94,7 +151,6 @@ end
 # match a single variable
 function just_variable(data, rule, σs)
     @assert is_𝑋(rule)
-
     var = varname(rule)
     val = is_segment(rule) ? (data,) : data
     ms = MatchDict[]
@@ -115,6 +171,10 @@ end
 
 # expression has defslot
 function has_defslot(i, data, rule, σs)
+    op = operation(rule)
+    if op ∈ (:^, :/)
+        i == 1 && return MatchDict[]
+    end
     ps = copy(arguments(rule))
     pᵢ = ps[i]
     qᵢ = :(~$(pᵢ.args[2].args[2]))
@@ -132,24 +192,27 @@ function has_defslot(i, data, rule, σs)
 
     var = varname(qᵢ)
     value = get(defslot_op_map, operation(rule), -1)
-    return [match_dict(σ, var => value) for σ ∈ σs if σ != FAIL_DICT]
+    σ′ = match_dict(var => value)
+    collect(union_merge(σs, σ′))
+    #return filter(!=(FAIL_DICT), [match_dict(σ, var => value) for σ ∈ σs if σ != FAIL_DICT])
 
 end
 
-function only_argument_is_segment(data, rule, σs)
+function only_argument_is_segment(data, rule, σs, op=nothing)
     !iscall(data) && return MatchDict[]
     opₛ, opᵣ = Symbol(operation(data)), operation(rule)
     opₛ == opᵣ || return MatchDict[]
 
     # return the whole data (not only vector of arguments as in rule1)
-    σ′ = match_dict(varname(only(arguments(rule))) => arguments(data))
+    var = varname(only(arguments(rule)))
+    σ′ = match_dict(var => data)
     collect(union_merge(σs, σ′))
 end
 
 function has_rational(data, rule, σs)
     # rational is a special case, in the integration rules is present only in between numbers, like 1//2
-
     as = arguments(rule)
+    data = as_symbol_or_literal(data)
     data.num == first(as) && data.den == last(as) && return σs
     # r.num == rule.args[2] && r.den == rule.args[3] && return matches::MatchDict
     return MatchDict[]
@@ -161,9 +224,7 @@ function different_powers(data, rule, σs)
     arg_data = arguments(data)
     arg_rule = arguments(rule)
     opᵣ, opₛ = operation(rule), Symbol(operation(data))
-
     b = first(arg_data)
-
     if opᵣ === :^
 
         # try first normal checks
@@ -192,6 +253,7 @@ function different_powers(data, rule, σs)
 
         elseif is1divsmth && iscall(arg_data[2]) &&
             (Symbol(operation(arg_data[2])) === :exp)
+
             # if data is of the alternative form 1/exp(...),
             # it might match ℯ ^ -...
             m = arg_data[2] # like b^m
@@ -214,6 +276,7 @@ function different_powers(data, rule, σs)
             push!(fad, arguments(b)[2], -1*m)
 
         elseif opₛ === :exp
+
             # if data is a exp call, it might match with base e
             push!(fad, ℯ, b)
 
@@ -250,6 +313,11 @@ function different_powers(data, rule, σs)
         end
 
         return ceoaa(tocheck, arg_rule, σs)
+    elseif (opᵣ, opₛ) == (:/, :*)
+        a, b = arg_rule
+        b′ = Expr(:call, :^, b, :(-1))
+        rule′ = pterm(:*, (a, b′))
+        return check_expr_r(data, rule′, σs)
     end
 end
 
@@ -308,7 +376,6 @@ function neim_rewrite(data, rule)
 
         # printdb(4,"Applying neim trick, new arg_data is $arg_data")
     end
-
     return (neim_pass, arg_data, arg_rule)
 
 end
@@ -342,36 +409,83 @@ function has_any_segment(𝑜𝑝ₛ, arg_data,
         return σ′s
     elseif 0 < m ≤ n
         σ′′s = MatchDict[]
-
-        for ind ∈ combinations(1:n, m)
-            # take m of the values and match
-            sub′ = sterm(typeof(first(arg_data)), 𝑜𝑝ₛ, arg_data[ind])
-            pat′ = pterm(opᵣ, notseg) # can be an issue!
-            for σ ∈ σs
-                σ′s = check_expr_r(sub′, pat′, [σ])
-                if !isempty(σ′s)
-                    # we found a match, assign the rest to first segment
-                    for σ′ ∈ σ′s
-                        v = first(seg)
-                        var = varname(v)
-                        val = length(ind) < n ?
-                            tuple(arg_data[setdiff(1:n, ind)]...) :
-                            ()
-                        val′ = get(σ′, var, missing)
-                        if ismissing(val′)
-                            if !has_predicate(v) ||
-                                (has_predicate(v) && _eval(get_predicate(v), val) )
-                                σ′ = match_dict(σ′, var=>val)
-                                push!(σ′′s, σ′)
+        if iscommutative(opᵣ)
+            for ind ∈ combinations(1:n, m)
+                # take m of the values and match
+                sub′ = sterm(typeof(first(arg_data)), 𝑜𝑝ₛ, arg_data[ind])
+                pat′ = pterm(opᵣ, notseg) # can be an issue!
+                for σ ∈ σs
+                    σ′s = check_expr_r(sub′, pat′, [σ])
+                    if !isempty(σ′s)
+                        # we found a match, assign the rest to first segment
+                        for σ′ ∈ σ′s
+                            v = first(seg)
+                            var = varname(v)
+                            val = length(ind) < n ?
+                                tuple(arg_data[setdiff(1:n, ind)]...) :
+                                ()
+                            val′ = get(σ′, var, missing)
+                            if ismissing(val′)
+                                if !has_predicate(v) ||
+                                    (has_predicate(v) && _eval(get_predicate(v), val) )
+                                    σ′ = match_dict(σ′, var=>val)
+                                    push!(σ′′s, σ′)
+                                end
+                            elseif val == val′
+                                push!(σ′′s, σ)
+                            else
+                                # continue the hunt
                             end
-                        elseif val == val′
-                            push!(σ′′s, σ)
-                        else
-                            # continue the hunt
                         end
                     end
                 end
             end
+        else
+            # march over, use segment to slurp rest
+            # this takes some thinking.
+            # match ~a,~~b,~c,~~d against say l,m,n,o,p,q
+            # has l|()|m|(nopq) # n - nontsegs + 1 choices for first
+            #     l|(m)|n|(opq) # then ,,, + 1 for second (if more)
+            #     l|(mn)|o|(pq) # then ... + 1 for third (if more)
+            #     l|(mno)|p|(q)
+            #     l|(mnop)|q|()
+            segs = findall(is_segment, arg_rule)
+            nsegs = length(segs)
+            k = length(arg_rule) - nsegs
+            n = length(arg_data) - k
+
+            # non-performant partition iterator
+            itr₀ = Base.Iterators.product(repeat([0:n], nsegs)...)
+            itr = Base.Iterators.filter(x -> sum(x) == n, itr₀)
+
+            σ′′s =  MatchDict[]
+            for α ∈ itr
+                σ′s = σs
+                j = 1 # index in data_rule
+                l = 1 # index in itr,
+                nomatch = false
+                for (i,pat) ∈ enumerate(arg_rule)
+                    nomatch && continue
+                    if i ∉ segs
+                        σ′s = check_expr_r(arg_data[j], pat, σ′s)
+                        isempty(σ′s) && (nomatch = true)
+                        j = j + 1
+                    else
+                        a = α[l]
+                        l = l + 1
+                        var = varname(arg_rule[i])
+                        #value = view(arg_data,j:(j+a-1))
+                        value = arg_data[j:(j+a-1)]
+                        σ′ = match_dict(var => value)
+                        σ′s = union_merge(σ′s, σ′)
+                        isempty(σ′s) && (nomatch = true)
+                        j = j + a
+                    end
+                end
+                isempty(σ′s) && continue
+                !nomatch && append!(σ′′s, σ′s)
+            end
+            return σ′′s
         end
         if length(seg) > 0
             # match all segments with (), then match the rest

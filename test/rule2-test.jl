@@ -56,7 +56,7 @@ end
 @testset "Segment" begin
     r = :(sin(+(~~a))) => :(~~a)
     # eq fails, isequal passes
-    @test isequal(rule2(r, :(sin(1+x+y+z))), [1, :x, :y, :z])
+    @test isequal(rule2(r, :(sin(1+x+y+z))), :(1 + x + y + z))
 end
 
 @testset "Neim Problem" begin
