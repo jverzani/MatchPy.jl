@@ -61,9 +61,6 @@ function check_expr_r(data, rule::Expr, σs)
 
     # if there is a deflsot in the arguments
     i = findfirst(is_defslot, arguments(rule))
-    @show rule, i, data
-
-
     if i !== nothing
         return has_defslot(i, data, rule, σs)
     end
@@ -85,7 +82,6 @@ function check_expr_r(data, rule::Expr, σs)
 
     # check opᵣ for special case
     opᵣ, 𝑜𝑝ₛ = operation(rule), operation(data)
-    @show opᵣ, 𝑜𝑝ₛ, rule, data, σs
     if opᵣ ∈ (:^, :sqrt, :exp) || (opᵣ == :/ && Symbol(𝑜𝑝ₛ) == :*)
         return different_powers(data, rule, σs)
     end
@@ -117,9 +113,6 @@ function check_expr_r(data, rule::Expr, σs)
         return has_any_segment(𝑜𝑝ₛ, arg_data, opᵣ, arg_rule,  σs)
     end
 
-    @show length(arg_data), length(arg_rule)
-    @show data
-    @show rule, operation(rule)
     (length(arg_data) != length(arg_rule)) && return MatchDict[]
     if iscommutative(opᵣ)
         σ′s = check_commutative(arg_data, arg_rule, σs)
@@ -177,7 +170,12 @@ function has_defslot(i, data, rule, σs)
     end
     ps = copy(arguments(rule))
     pᵢ = ps[i]
-    qᵢ = :(~$(pᵢ.args[2].args[2]))
+    #if is_operation(:^)(pᵢ)
+    #    a,b = arguments(pᵢ)
+    #    qᵢ = :($a^~$(b.args[2].args[2]))
+    #else
+        qᵢ = :(~$(pᵢ.args[2].args[2]))
+    #end
     ps[i] = qᵢ
 
     # build rule expr without defslot and check it

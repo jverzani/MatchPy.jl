@@ -8,5 +8,5 @@ include("syntactic_match.jl")
 include("match_py.jl")
 include("rule2a.jl")
 
-include("_replace.jl")
+include("replace.jl")
 end

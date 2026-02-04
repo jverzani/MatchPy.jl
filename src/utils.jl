@@ -141,9 +141,15 @@ function is_slot(x::Expr)
 end
 
 function is_defslot(x::Expr)
+    #if is_operation(:^)(x)
+    #    _,x = arguments(x)
+    #end
+
     is_𝑋(x) || return false
     _, arg = x.args
     is_operation(:(!))(arg) && return true
+
+
     return false
 end
 
