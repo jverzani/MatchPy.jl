@@ -1,6 +1,6 @@
 # utils for matching
 
-# These may need extensions to use with other pacakges
+# These may need extensions to use with other packages
 _unwrap_const(x) = x
 _unwrap_const(x::Number) = x
 _unwrap_const(x::Symbol) = x
