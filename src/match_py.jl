@@ -40,7 +40,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
             var = varname(p)
             if has_predicate(p)
                 pred = get_predicate(p)
-                if Base.invokelatest(Main.eval(pred), data)
+                if _evalguard(pred, data)
                     σ′ = match_dict(σ′, var => data)
                 else
                     return ∅
@@ -55,7 +55,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     elseif is_𝑋(p)                      # sequence variable?
         var = varname(p)
         if has_predicate(p) &&
-            !Base.invokelatest(Main.eval(get_predicate(p)), ss)
+            _evalguard(get_predicate(p), ss)
             return ∅
         end
 
@@ -464,13 +464,13 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
                     vv′ = nothing
                 end
             else
-                vv′ = isa(fc, Nothing) ? vv : sterm(typeof(first(vv)), fc, vv)
+                vv′ = isa(fc, Nothing) ? vv : sterm(fc, vv)
             end
             if !isnothing(vv′)
                 var = varname(v)
                 if has_predicate(v)
                     pred = get_predicate(v)
-                    if Base.invokelatest(eval(pred), vv′)
+                    if _evalguard(pred. vv′)
                         σ′′ = match_dict(var => vv′)
                     else
                         return nothing # FAIL_DICT
