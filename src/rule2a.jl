@@ -2,7 +2,7 @@
 # Licensed under MIT with Copyright (c) 2022 Harald Hofstätter, Mattia Micheletta Merlin, Chris Rackauckas, and other contributors
 function _eval(pred, data)
     out = try
-        Base.invokelatest(eval(pred), ϟ(data))
+        Base.invokelatest(eval(pred), data) #ϟ(data))
     catch err
         false
     end
