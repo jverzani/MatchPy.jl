@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="JuliaSettingsState">
+    <option name="juliaSdkPath" value="$USER_HOME$/.julia/juliaup/julia-nightly/bin/julia" />
+    <option name="juliaVersion" value="1.13.0" />
+  </component>
+</project>

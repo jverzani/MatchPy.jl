@@ -1,6 +1,6 @@
 function syntactic_match(s, p, σ = match_dict())
     if !has_𝑋(p) # no wild
-        out = (_unwrap_const(s) == p) ? σ : nothing
+        out = (_unwrap_const(s) == _unwrap_const(p)) ? σ : nothing
         return out
     elseif is_slot(p)
         var = varname(p)

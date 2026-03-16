@@ -5,7 +5,7 @@ struct R2 <: MatchType end
 
 ### ---- match, eachmatch, replace
 
-function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=R2())
+function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=MP())
     σs = _eachmatch(pat, sub, M)
     σ = iterate(σs)
     isnothing(σ) && return nothing
@@ -14,7 +14,7 @@ end
 
 
 # return iterator of each possible match
-_eachmatch(pat::Expr, ex) = _eachmatch(pat, ex, R2())
+_eachmatch(pat::Expr, ex) = _eachmatch(pat, ex, MP())
 
 function _eachmatch(pat::Expr, ex, M::MP)
     if has_𝑋(pat)
@@ -32,7 +32,7 @@ end
 
 # replace variables in rhs with values looked upin σ
 # return an Expr (or Symbol or literal number)
-function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=R2())
+function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=MP())
     if !iscall(rhs)
         if isexpr(rhs)
             args = [rewrite(σ, a, M) for a ∈ children(rhs)]

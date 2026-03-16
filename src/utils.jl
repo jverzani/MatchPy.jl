@@ -5,6 +5,7 @@ _unwrap_const(x) = x
 _unwrap_const(x::Number) = x
 _unwrap_const(x::Symbol) = x
 _unwrap_const(x::Expr) = __isnumber(x) ?  eval(x) : x
+unwrap_const(x::Any) = _unwrap_const(x)
 __isnumber(x::Number) = true
 __isnumber(x::Symbol) = x ∈ (:π, :ℯ, :φ, :γ)
 __isnumber(x::Expr) = !(_ismatch(x, !__isnumber))
@@ -13,7 +14,7 @@ __isnumber(x::Expr) = !(_ismatch(x, !__isnumber))
 symtype(::Real) = Expr
 symtype(::Symbol) = Expr
 symtype(::Expr) = Expr
-symtpye(::T) where T = T
+symtype(::T) where T = T
 
 # to evaluate a guard. (Where is the question?)
 function _evalguard(pred, data)
@@ -44,6 +45,7 @@ end
 
 function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
+
         v = isa(v,Number) ? _unwrap_const(v) : v
         if haskey(σ, k)
             σ[k] != v && return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
@@ -58,11 +60,13 @@ end
 function iscompatible(σ::MatchDict, σ′::MatchDict)
     isempty(σ) && return true
     isempty(σ′) && return true
+#    @show σ, σ′
     for k in keys(σ)
-        if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
+            if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
             isequal(σ[k], σ′[k]) || return false
         end
     end
+#    @show true
     return true
 end
 
@@ -76,8 +80,12 @@ function merge_match(σ::MatchDict, σ′::MatchDict)
 end
 merge_match(σ::Tuple, σ′::MatchDict) = σ′
 
-function union_merge(θ, σ′)
+function union_merge(θ, σ′::MatchDict)
     (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+end
+
+function union_merge(θ, θ′)
+    (merge_match(σ, σ′) for σ ∈ θ for σ′ ∈ θ′ if iscompatible(σ, σ′))
 end
 
 ## utils
@@ -91,10 +99,11 @@ _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
 
 # need to compare x and p when p is from an expression
 # trick -- SymEngine.Basic <: Number
+eq_expr(a, p::Irrational) = isequal(Symbol(a),Symbol(p))
 eq_expr(a, p::Number) = isequal(a,p)
 eq_expr(a::Number, p::Symbol) = false
 eq_expr(a, p::Symbol) = isequal(Symbol(a),p)
-
+eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(a, b))
 
 # create a term for a pattern (pterm) or a subject (sterm)
 # the former is only for expressions
@@ -148,6 +157,11 @@ isassociative(::typeof(*)) = true
 
 iscommutative(::typeof(+)) = true
 iscommutative(::typeof(*)) = true
+
+# --- basic total order, can override for other types
+<ₑ(x::Symbol, y::Symbol) = x < y
+<ₑ(x::Any, y::Any) = <ₑ(Symbol(x), Symbol(y))
+
 
 # check for wildcard variables
 is_𝑋(x::Any) = false

@@ -1,5 +1,6 @@
 using Test
 using MatchPy
+import MatchPy: _match, _eachmatch
 
 function MatchPy.isassociative(x::Symbol)
     x ∈ (:(+), :(*)) && return true

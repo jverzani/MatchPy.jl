@@ -1,7 +1,7 @@
 module MatchPy
 
 using TermInterface
-using Combinatorics: permutations, combinations
+import Combinatorics: permutations, combinations, multiexponents
 
 
 

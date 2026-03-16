@@ -15,7 +15,7 @@ function check_expr_r(data, rule::Real, σs)
 end
 
 function check_expr_r(data, rule::Symbol, σs)
-    isequal(rule, Symbol(data)) && return σs
+        isequal(rule, Symbol(data)) && return σs
     return MatchDict[]
 end
 
