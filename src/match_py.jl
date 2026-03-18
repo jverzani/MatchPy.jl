@@ -201,6 +201,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 end
 
 # 3.3 match non-commutative function
+#     return iterator of matches
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
     n, m = length(ss), length(ps)
     nstar = count(is_segment, ps)
@@ -256,56 +257,55 @@ end
 ## ---- commutative (associative when fₐ != nothing)
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-    @show :mcs, ss, ps, fₐ
-    @show :mcs1, collect(θ)
+    ##@show :mcs, ss, ps, fₐ
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
     ss, ps = out
 
     ## chain togetther
-    i = ((ss, ps, σ) for σ ∈ θ)
-
-    ii = Iterators.map(i) do a
-        ss, ps, σ = a
-        # @show :ii, ps, σ
-        _match_defslot_patterns(ss, ps, fₐ, σ)
+    i = let ss=ss, ps=ps
+        Iterators.map(σ -> (ss, ps, σ), θ)
     end
 
-    iii = Iterators.map(clean(ii)) do a
+    ii = Iterators.map(enumerate(i)) do (j,a)
         ss, ps, σ = a
-        @show :iii, ps, σ
+        itr = _match_defslot_patterns(ss, ps, fₐ, σ)
+        itr = clean(itr)
+    end
+
+    iii = Iterators.map(ii) do a
+        ss, ps, σ = a
         itr = _match_non_variable_patterns(ss, ps, fₐ, σ)
-        Iterators.flatten(Iterators.filter(!isnothing, itr))
+        itr
     end
 
-    iv = Iterators.map(iii) do a
-        ss, ps, θ = a
-        #@show :iv, collect(θ)
-        itr = Iterators.map(σ -> _match_regular_variables(ss, ps, fₐ, σ), θ)
-        Iterators.flatten(itr)
+    iiia = Iterators.filter(!isnothing, iii)
+    iiib = Iterators.flatten(iiia)
+
+
+    iv = Iterators.map(iiib) do a
+        ss, ps, σ = a
+        itr = _match_regular_variables(ss, ps, fₐ, σ)
+        itr
     end
 
-    v = Iterators.map(iv) do a
-        itr = Iterators.map(a) do a′
-            ss, ps, σ = a′
-            #@show :V, σ
-            _match_sequence_variables(ss, ps, fₐ, σ)
-        end
-        clean(itr)
+    iva = Iterators.flatten(iv)
+    ivb = Iterators.filter(!isnothing, iva)
+
+    v = Iterators.map(ivb) do a
+        ss, ps, σ = a
+        itr = _match_sequence_variables(ss, ps, fₐ, σ)
     end
 
-    vi = Iterators.flatten(v)
-
+    va = Iterators.flatten(v)
+    Iterators.filter(!isnothing, va)
 
 end
 
 # return trimmed ss, ps or nothing
 function _match_constant_patterns(ss, ps)
    ## @show :mcp, ss, ps
-    # XXX what about mismatched match?
-    # XXX clean this up!
     Pconst = filter(!has_𝑋, ps)
-    # ss′′ = as_symbol_or_literal.(ss)
     for p ∈ Pconst
         inds = Int[]
         for (i,sᵢ) ∈ enumerate(ss) # ss′
@@ -323,8 +323,6 @@ end
 # returns (ss,ps) or nothing
 function  _match_matched_variables(ss, ps, σ)
     #@show :mmv, ss, ps, σ
-    #return ss, ps
-    ss = copy(ss)
     # subtract from, ps, ss previously matched variables
     (isnothing(σ) || isempty(σ)) && return (ss, ps)
     ps′, psₒ = _groupby(is_𝑋, ps)
@@ -335,19 +333,10 @@ function  _match_matched_variables(ss, ps, σ)
             v = ps′[i]
             itr = (is_slot(v) || is_defslot(v)) ? (s,) : s
             for sᵢ ∈ itr
-                i = findfirst(==(sᵢ), ss)
-                isnothing(i) && return nothing
-                deleteat!(ss,i)
+                j = findfirst(==(sᵢ), ss)
+                isnothing(j) && return nothing
+                ss = vcat(ss[1:(j-1)], ss[(j+1):end])
             end
-            #=
-            # delete s from ss or return nothhing
-            itr = applicable(iterate, s) ? s : [s] #isa(s, Tuple) ? s : (s,)
-            for si ∈ itr
-                i = findfirst(==(si), ss)
-                isnothing(i) && return nothing
-                ss = [v for (j,v) ∈ enumerate(ss) if j != i]
-            end
-            =#
         end
     end
 
@@ -361,14 +350,11 @@ end
 # retrun iterator of (ss, ps, σ) values
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
    ## @show :mds, ss, ps, fₐ
-
     if any(is_defslot, ps)
         ##_@show :XXX
 
     elseif any(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
-        ##_@show :YYY
         i =  findfirst(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
-        ##_@show :defslot, i, ps
         ps′ = copy(ps)
         p = ps′[i]
         a, b = arguments(p)
@@ -393,35 +379,24 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
 end
 
 # match non_variable_patterns
-# return iterator of (ss, ps, θ)
+# return iterator of (ss, ps, σ) or nothing
 function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
-    @show :mnvp, ss, ps, σ
+    #@show :mnvp, ss, ps, σ
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
     ss, ps = out
-    @show :mnvpmv, ss, ps
 
     ps′, ps′′ = _groupby(!is_𝑋, ps)
     n = length(ps′)
-    n == 0 && return ((ss, ps, (σ,)),)
-    @show ps′
-    opₚs = operation.(ps′)
-    λ = x -> iscall(x) && soperation(x) ∈ opₚs
-    ss′, ss′′  = _groupby(λ, ss)
-    n ≤ length(ss′) || return nothing
+    n == 0 && return ((ss, ps, σ), )
 
-    i = permutations(1:length(ss′), n)
-    ii = Iterators.map(i) do inds
-        𝑠𝑠′′  = vcat(collect(ss′′), [sᵢ for (i,sᵢ) ∈ enumerate(ss′) if i ∉ inds])
-        ss′′′ = ss′[inds]
+    n ≤ length(ss) || return nothing
+
+    i = permutations(1:length(ss), n)
+    f = inds -> begin
+        ss′= ss[inds]
         θ′ = (σ,)
-        @show ss′′′, ps′, σ
-        for (s,p) ∈ zip(ss′′′, ps′)
-            #=
-            p = normalize_pattern(p,s) # rewrite operations
-            soperation(s) == soperation(p) || return nothing
-            θ′ = match_sequence(arguments(s), arguments(p), operation(s), θ′)
-            =#
+        for (s,p) ∈ zip(ss′, ps′)
             p = normalize_pattern(p,s) # rewrite pattern if needed
             soperation(s) == soperation(p) || return nothing
             fₐ′ = isassociative(operation(s)) ? operation(s) : nothing
@@ -430,10 +405,12 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
             θ′ == ∅ && return nothing
         end
         θ′ == ∅ && return nothing
-        length(𝑠𝑠′′) > length(ps′′) && return nothing
-        return (𝑠𝑠′′, ps′′, θ′)
+        ss′′ = setdiff(ss, ss′) # so ss′ and ps′ have matches in θ′
+        return ((ss′′, ps′′, σ) for σ ∈ θ′)
     end
-    iv = Iterators.filter(!isnothing, ii)
+    ii = Iterators.map(f, i)
+    iii = Iterators.filter(!isnothing, ii)
+    iv = Iterators.flatten(iii)
 
 end
 
@@ -462,7 +439,6 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
 
     dp = _countmap(ps_reg)
     ds = _countmap(ss)
-
     i = _split_take(ds, dp)
 
     ii = Iterators.filter(ab -> begin
@@ -476,14 +452,13 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
     end
 
     return iii
-
 end
 
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
-    @show :msv, ss, ps, fc, σ
     isempty(ps) && return (σ, )
+    #@show :msv, ss, ps, fc, σ
 
     out =  _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
@@ -529,7 +504,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
         end
 
     iii = Iterators.map(ii) do u
-        @show u, typeof(σ)
         σ′ = σ
         for (j, v) ∈ enumerate(vars)
             vv = []
@@ -554,7 +528,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
             end
             if !isnothing(vv′)
                 var = varname(v)
-                @show var, v
                 if has_predicate(v)
                     pred = get_predicate(v)
                     if _evalguard(pred, vv′)
@@ -565,13 +538,10 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
                 else
                     σ′′ = match_dict(var => vv′)
                 end
-                @show σ′
-                @show σ′′
                 iscompatible(σ′, σ′′) || return break
                 σ′ = merge_match(σ′, σ′′)
             end
         end
-        @show σ, σ′
         iscompatible(σ, σ′) || return nothing
         return merge_match(σ, σ′)
     end

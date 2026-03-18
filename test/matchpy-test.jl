@@ -59,13 +59,15 @@ end
 
 @testset "matched variables" begin
 
-    ss, ps = (:a,:b,:c), (:(~x),:(~y),:(~z))
+    ss, ps = [:a,:b,:c], [:(~x),:(~y),:(~z)]
+    σ₀ = MatchPy.match_dict()
     σ = MatchPy.match_dict(:x => :a)
 
     ss′, ps′ = MatchPy._match_matched_variables(ss, ps, σ)
     @test ss′ == [:b,:c] && ps′ == [:(~y),:(~z)]
 
-    Θ = MatchPy.match_commutative_sequence(ss, ps, nothing, (MatchPy.MatchDict(),))
+
+    Θ = MatchPy.match_commutative_sequence(ss, ps, nothing, (σ₀,))
     @test length(collect(Θ)) == 6
 
     Θ = MatchPy.match_commutative_sequence(ss, ps, nothing, (σ,))
@@ -100,24 +102,33 @@ end
 
 @testset "sequence variables" begin
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~~x), :(~~~y)))
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)])
     @test length(collect(θ)) == 2 # u(a,b), u(c); u(a), u(b,c)
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~~x), :(~~y)), :u)
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :u)
     @test length(collect(θ)) == 3 # add u(a,b,c),u()
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~x), :(~~y)), :u)
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :u)
     @test length(collect(θ)) == 4
 
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~~x), :(~~~y)), :(uₘ)) # are these right
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)], :(uₘ)) # are these right
     @test length(collect(θ)) == 2 #
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~~x), :(~~y)), :(uₘ))
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :(uₘ))
     @test length(collect(θ)) == 3
 
-    θ = MatchPy.match_sequence((:a,:b,:c), (:(~~x), :(~~y)), :(uₐₘ))
+    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :(uₐₘ))
     @test length(collect(θ)) == 4
 
+
+end
+
+@testset "match_commutative" begin
+    θ = M._eachmatch(:(exp(~y) + exp(~x)), :(exp(y) + exp(x)))
+    @test length(collect(θ)) == 2
+
+    θ = MatchPy._eachmatch(:(*(~a, ~~x) + *(~b,~~x)), :(2x + 3*x*y))
+    @test length(collect(θ)) == 4
 
 end
