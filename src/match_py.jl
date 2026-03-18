@@ -7,9 +7,10 @@
 #     write with: :(*(~~x) + *(~β, ~~x)) => :(*(1 + ~β, (~~x)...))
 # ✓ ~~~x is 1 or more, ~~x is 0,1 or more
 # ✓ goal is rewrite rule to handle :(*(~a, ~~x) + *(~b, ~~x)) => :((~a+~b) * *(~~x...))
-# functions take a container of σs and either reduce (filter) or build opon (product)
+# ✓ functions take a container of σs and either reduce (filter) or build opon (product)
 #   reduction is like pruning a tree and uses `nothing` value to indicate this;
 =#
+
 # implement algorithm of matchpy paper through Ch. 3
 # from SimpleExpressions but modified to work with expressions for patterns
 

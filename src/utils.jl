@@ -232,6 +232,7 @@ end
 # return symbol holding variable name
 varname(x::Symbol) = x
 function varname(x::Expr)
+    iscall(x) && !(x.args[1] ∈ (:~, :!)) && throw(ArgumentError("not a wild card variable"))
     if x.args[1] ∈ (:~, :!)
         varname(x.args[2])
     else

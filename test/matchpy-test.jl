@@ -132,3 +132,24 @@ end
     @test length(collect(θ)) == 4
 
 end
+
+@testset "defslot" begin
+    θ = MatchPy._eachmatch(:(~a + ~z), :(y))
+    @test length(collect(θ)) == 0
+
+    θ = MatchPy._eachmatch(:(~!a + ~z), :(y))
+    @test only(θ)[:a] == 0
+
+    θ = MatchPy._eachmatch(:(~a * ~z), :(y))
+    @test length(collect(θ)) == 0
+
+    θ = MatchPy._eachmatch(:(~!a * ~z), :(y))
+    @test only(θ)[:a] == 1
+
+
+    θ = MatchPy._eachmatch(:((~z)^(~a)), :(y)); collect(θ) # need (~z)
+    @test length(collect(θ)) == 0
+
+    θ = MatchPy._eachmatch(:((~z)^(~!a)), :(y))
+    @test only(θ)[:a] == 1
+end
