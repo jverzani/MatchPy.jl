@@ -60,13 +60,11 @@ end
 function iscompatible(σ::MatchDict, σ′::MatchDict)
     isempty(σ) && return true
     isempty(σ′) && return true
-#    @show σ, σ′
     for k in keys(σ)
             if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
             isequal(σ[k], σ′[k]) || return false
         end
     end
-#    @show true
     return true
 end
 
@@ -99,11 +97,23 @@ _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
 
 # need to compare x and p when p is from an expression
 # trick -- SymEngine.Basic <: Number
-eq_expr(a, p::Irrational) = isequal(Symbol(a),Symbol(p))
-eq_expr(a, p::Number) = isequal(a,p)
-eq_expr(a::Number, p::Symbol) = false
-eq_expr(a, p::Symbol) = isequal(Symbol(a),p)
+# compare Number, Expr, Irrational, Symbol
+eq_expr(a::Any, b::Any) = isequal(a,b)
+# symbol
+eq_expr(a::Union{Expr, Number}, b::Symbol) = false
+eq_expr(a::Symbol, b::Union{Expr, Number}) = false
+eq_expr(a::Irrational, b::Symbol) = isequal(Symbol(a), b)
+eq_expr(a::Symbol, b::Irrational) = isequal(a, Symbol(b))
+eq_expr(b::Symbol, a::Number) = false
+# Expr
 eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(a, b))
+eq_expr(a::Expr, b::Number) = eq_expr(b,a)
+function eq_expr(a::Number, b::Expr)
+    is_operation(://)(b) || return false
+    a1,a2 = numerator(a), denominator(a)
+    _, b1,b2 = b.args
+    eq_expr(a1, b1) && eq_expr(a2, b2)
+end
 
 # create a term for a pattern (pterm) or a subject (sterm)
 # the former is only for expressions
@@ -129,6 +139,18 @@ function sterm(op, args)
     end
     _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
 end
+
+
+function sterm(S, op, args)
+    _isexpr = S == Expr
+    if _isexpr
+        !isa(op, Symbol) && (op = nameof(op))
+    else
+        isa(op, Symbol) && (op = eval(op))
+    end
+    _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+end
+
 
 # invert an expr to regularize a/b --> a*b^{-1}
 function _invert_expr(pat)
@@ -176,7 +198,7 @@ const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
 
 # Expr
 is_𝑋(x::Expr) = (iscall(x) && first(x.args) === :(~))  ||
-    (isexpr(x) && is_𝑋(first(x.args)))
+    (isexpr(x) && head(x) != :... && is_𝑋(first(x.args)))
 
 function has_𝑋(x::Expr)
     is_𝑋(x) && return true

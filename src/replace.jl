@@ -2,7 +2,7 @@
 abstract type MatchType end
 struct MP <: MatchType end
 struct R2 <: MatchType end
-
+struct R1 <: MatchType end
 ### ---- match, eachmatch, replace
 
 function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=MP())
@@ -28,6 +28,37 @@ end
 function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R2)
     check_expr_r(sub, pat, [MatchDict()])
 end
+
+function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R1)
+    MatchPy.Rule2.check_expr_r(sub, pat, MatchDict())
+end
+
+# T is symbolic type (Expr, ...)
+# rhs an expression
+function _rewrite(T, σ::MatchDict, rhs)
+    λ = rhs -> begin
+        if is_𝑋(rhs)
+            var = varname(rhs)
+            haskey(σ, var) ? σ[var] : error("XXX no match  in σ for $var XXX")
+        else
+            rhs
+        end
+    end
+    postwalk(T, λ, rhs)
+end
+
+_hasoperation(ex) = !is_𝑋(ex) && (iscall(ex) || isexpr(ex))
+_children(ex) = iscall(ex) ? arguments(ex) : children(ex)
+_head(ex) = iscall(ex) ? operation(ex) : head(ex)
+
+function walk(T, ex, inner, outer)
+    _hasoperation(ex) || return outer(ex)
+    outer(sterm(T, _head(ex), map(inner, _children(ex))))
+end
+function postwalk(T, f, ex)
+    walk(T, ex, ex -> postwalk(T,f,ex), f)
+end
+
 
 
 # replace variables in rhs with values looked upin σ

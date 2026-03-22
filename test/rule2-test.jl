@@ -2,6 +2,7 @@
 using Test
 using Random
 using MatchPy
+MP, R2, R1 = MatchPy.MP, MatchPy.R2, MatchPy.R1
 
 function rule2(rule::Pair{Expr, Expr}, expr)
     σ = MatchPy.match_dict()
@@ -86,13 +87,13 @@ end
     #    @test isequal(rule2(r8, :((x) / (y*(2 + 2x)^3)))[2], -3)
     pat= first(r8)
     sub = :((x) / (y*(2 + 2x)^3))
-    σs = MatchPy._eachmatch(pat, sub)
+    σs = MatchPy._eachmatch(pat, sub, R2())
     for σ ∈ σs
         @test σ[:n] == -1
     end
 
     pat = :((~!c)*(~a)^(~!m)*(~b)^(~!n)) # r8 w/o predicate
-    σs = MatchPy._eachmatch(pat, sub)
+    σs = MatchPy._eachmatch(pat, sub, R2())
     @test length(σs) == 2
     for σ ∈ σs
         @test σ[:n]*σ[:m] == -1
