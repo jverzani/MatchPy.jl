@@ -10,7 +10,7 @@ Both find all matches of a pattern employing wildcards against a subject. The pa
 
 ## Interface
 
-The choice of which algorithm is specified by `MatchPy.R2()` (the default) or `MatchPy.MP()`. The matchpy algorithm returns a generator which can be collected.
+The choice of which algorithm is specified by `MatchPy.MP()` (the default) or `MatchPy.R2()`. The matchpy algorithm returns a generator which can be collected.
 
 The `MatchPy._match` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
 
@@ -23,7 +23,7 @@ The `MatchPy._replace` method can be used to replace parts of an expression with
 ```
 julia> using MatchPy
 
-julia> MatchPy._eachmatch(:(~x + ~y), :(a + b))
+julia> MatchPy._eachmatch(:(~x + ~y), :(a + b, MatchPy.R2()))
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:y => :b, :x => :a)
  Base.ImmutableDict(:y => :a, :x => :b)
@@ -56,9 +56,9 @@ Patterns are specified with wildcards or which there is a variety. We follow the
 
 * A "slot variable", specified as `:(~x)`, matches one argument.
 
-* A "default slot variable", specified `:(~!x)`, matches 0 or 1 arguments. First, a slot variable is replaced to see if there is a match. If there is none, an attempt to find a match with the variable replaced by a default value (for an operation of `+` this is `0`, for `*` this is `1`, and for an exponent, also `1`.
+* A "default slot variable", specified as `:(~!x)`, matches 0 or 1 arguments. First, a slot variable is replaced to see if there is a match. If there is none, an attempt to find a match with the variable replaced by a default value (for an operation of `+` this is `0`, for `*` this is `1`, and for an exponent, also `1`.
 
-* A "segment variable", specified `:(~~x)`, matches 0, 1 or more of the arguments. The match is returned as a tuple of matches.
+* A "segment variable", specified `:(~~x)`, matches 0, 1 or more of the arguments. The match is returned as a collection of matches.
 
 In addition, for the MatchPy algorithm there is:
 
@@ -71,35 +71,36 @@ Wildcards may have predicates attached to them through the notation `:(~x::predi
 * Use of default slots
 
 ```
-juliaMatchPy._replace(:(2cos(2x)^2 + 2sin(2x)^2), :(~!a * sin(~x)^2 + ~!a * cos(~x)^2) => :(~!a))
+julia> MatchPy._replace(:(2cos(2x)^2 + 2sin(2x)^2), :(~!a * sin(~x)^2 + ~!a * cos(~x)^2) => :(~!a))
 2
 
-julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x)))
+julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x))) |> collect
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => :x, :b => 2)
  Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => 2, :b => :x)
 ```
 
-* Use of predicate
+* Use of a predicate function to filter matches
 
 ```
-julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x::(u -> !isa(u,Number)) + ~!c)^(~!m)), :(sin(2x)))
+julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x::(u -> !isa(u,Number)) + ~!c)^(~!m)), :(sin(2x))) |> collect
 1-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => :x, :b => 2)
 ```
 
-* Use of segment variable
+* Use of a segment variable
 
 ```
 julia> MatchPy._eachmatch(:(~x + ~~y), :(a + b), MatchPy.MP()) |> collect
 3-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :(a + b), :y => missing)
- Base.ImmutableDict(:x => :b, :y => :a)
- Base.ImmutableDict(:x => :a, :y => :b)
+ Base.ImmutableDict(:x => :(a + b), :y => Any[])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :a, :y => Any[:b])
 ```
 
-* Plus variable must have aleast one match
+Notice that `+` is associative, so the slot variable `~x` may match one or more arguments. In the case there is more than one, the function is called on them. This is why the first match has `:x => :(a+b)`. A match for a segment should always return a container.
 
+* Plus variable must have aleast one match
 ```
 julia> MatchPy._eachmatch(:(~x + ~~~y), :(a + b), MatchPy.MP()) |> collect
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
@@ -107,12 +108,28 @@ julia> MatchPy._eachmatch(:(~x + ~~~y), :(a + b), MatchPy.MP()) |> collect
  Base.ImmutableDict(:x => :a, :y => :b)
 ```
 
-## Differences
-
-The algorithms don't always give the same output. Here the segment variable for one is a tuple, but the MatchPy algorithm calls the `+` operation on the tuple, defaulting to `missing` when there are no arguments.
+Compare to:
 
 ```
-julia> MatchPy._eachmatch(:(~x + ~~y), :(+(a,b)))
+julia> MatchPy._eachmatch(:(~x + ~~y::(u->length(u) >= 1)), :(a + b), MatchPy.MP()) |> collect
+2-element Vector{Base.ImmutableDict{Symbol, Any}}:
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :a, :y => Any[:b])
+
+julia> MatchPy._eachmatch(:(~x + ~~y), :(a + b), MatchPy.MP()) |> collect
+3-element Vector{Base.ImmutableDict{Symbol, Any}}:
+ Base.ImmutableDict(:x => :(a + b), :y => Any[])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :a, :y => Any[:b])
+```
+
+
+## Differences
+
+The algorithms don't always give the same output. Here the segment variable for one is a tuple, but the MatchPy algorithm calls the `+` operation on the tuple, defaulting to an empty array when there are no arguments.
+
+```
+julia> MatchPy._eachmatch(:(~x + ~~y), :(+(a,b)), MatchPy.R2())
 3-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:y => (:b,), :x => :a)
  Base.ImmutableDict(:y => (:a,), :x => :b)
@@ -120,9 +137,9 @@ julia> MatchPy._eachmatch(:(~x + ~~y), :(+(a,b)))
 
 julia> MatchPy._eachmatch(:(~x + ~~y), :(+(a,b)), MatchPy.MP()) |> collect
 3-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :(a + b), :y => missing)
- Base.ImmutableDict(:x => :b, :y => :a)
- Base.ImmutableDict(:x => :a, :y => :b)
+ Base.ImmutableDict(:x => :(a + b), :y => Any[])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :a, :y => Any[:b])
 ```
 
 

@@ -89,6 +89,15 @@ end
          sub = :(a + b),
          len = 2),
 
+        # defslot combos
+        (pat = :((~!a)*(~x)),
+         sub = :(x),
+         len = 1),
+        (pat = :((~!a)*(~x) + (~!b)),
+         sub = :(x),
+         len = 1),
+
+
         # wrapped in functions
 
         (pat = :(log(~x) + log(~y)),
