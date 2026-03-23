@@ -188,9 +188,9 @@ end
         #length(γs) < length(u) && (@show pat, sub, :different)
         σ = MatchPy.Rule2.check_expr_r(sub, pat, MatchPy.Rule2.MatchDict())
         if iszero(len)
-            @show i, σ ==  MatchPy.Rule2.FAIL_DICT
+            #@show i, σ ==  MatchPy.Rule2.FAIL_DICT
         else
-            @show i, σ !=  MatchPy.Rule2.FAIL_DICT
+            #@show i, σ !=  MatchPy.Rule2.FAIL_DICT
         end
     end
 end
@@ -263,9 +263,9 @@ end
         end
         σ = MatchPy.Rule2.check_expr_r(sub, pat, MatchPy.Rule2.MatchDict())
         if len == 0
-            @show σ == MatchPy.Rule2.FAIL_DICT
+            #@show σ == MatchPy.Rule2.FAIL_DICT
         else
-            @show σ != MatchPy.Rule2.FAIL_DICT
+            #@show σ != MatchPy.Rule2.FAIL_DICT
         end
     end
 
