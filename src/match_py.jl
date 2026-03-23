@@ -9,7 +9,7 @@
 #     write with: :(*(~~x) + *(~β, ~~x)) => :(*(1 + ~β, (~~x)...))
 # ✓ ~~~x is 1 or more, ~~x is 0,1 or more
 # ✓ goal is rewrite rule to handle :(*(~a, ~~x) + *(~b, ~~x)) => :((~a+~b) * *(~~x...))
-# ✓ functions take a container of σs and either reduce (filter) or build opon (product)
+# ✓ functions take a container of σs and either reduce (filter) or build opun (product)
 #   reduction is like pruning a tree and uses `nothing` value to indicate this;
 =#
 
@@ -344,7 +344,7 @@ end
 
 
 # match defslot patterns early
-# retrun iterator of (ss, ps, σ) values
+# return iterator of (ss, ps, σ) values
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mds, ss, ps, fₐ
     i = findfirst(is_defslot(ps))

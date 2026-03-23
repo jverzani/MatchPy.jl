@@ -396,7 +396,7 @@ rule2 is a way to do pattern matching alternative to SymbolicUtils.jl
 # Arguments
 rule: of the form :(e1) => :(e2), where e1 is a Expr representing any
 symbolic operation
-expr: the input symbolic exprssion to check
+expr: the input symbolic expression to check
 """
 function rule2(rule::Pair{Expr, Expr}, expr::SymsType)::Union{SymsType, Nothing}
     # global indentation_zero = length(stacktrace())
