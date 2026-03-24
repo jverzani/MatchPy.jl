@@ -195,7 +195,7 @@ end
 # 3.3 match non-commutative function
 #     return iterator of matches
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
-    #@show :mcs, ss, ps, θ
+    @show :ms, ss, ps, collect(θ)
     n, m = length(ss), length(ps)
 
     nstar = count(is_segment, ps)
@@ -257,7 +257,7 @@ end
 ## ---- commutative (associative when fₐ != nothing)
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-
+    @show :mcs, ss, ps
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -362,6 +362,7 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
             σ = match_dict(σ, 𝑢 => defslot_op_map[Symbol(fₐ)])
             return _match_defslot_patterns(ss, ps[setdiff(eachindex(ps), inds)], fₐ, σ)
         end
+        #=
     elseif any(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
         i =  findfirst(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
         ps′ = copy(ps)
@@ -385,7 +386,7 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
             σ = match_dict(σ, varname(b) => defslot_op_map[:(^)])
             return ((ss, ps′, σ),)
         end
-
+=#
     else
         return ((ss, ps, σ),)
     end
@@ -394,7 +395,7 @@ end
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
 function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
-    #@show :mnvp, ss, ps, σ
+    @show :mnvp, ss, ps, σ
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
     ss, ps = out
@@ -407,6 +408,7 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
 
     i = permutations(1:length(ss), n)
     f = inds -> begin
+        @show inds, σ
         ss′= ss[inds]
         θ′ = (σ,)
         for (s,p) ∈ zip(ss′, ps′)
