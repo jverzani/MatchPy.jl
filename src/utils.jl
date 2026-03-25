@@ -1,14 +1,32 @@
 # utils for matching
 
-# These may need extensions to use with other packages
+# These may need extensions to use with other packages; eg cf replace.jl
+
+# if x is a wrapped constant number, unwrap it. Otherwise return x
+unwrap_const(x::Any) = _unwrap_const(x)
+
+# check if value holds a number
+_isnumber(::Any) = false
+
+# cases for expression types
 _unwrap_const(x) = x
 _unwrap_const(x::Number) = x
-_unwrap_const(x::Symbol) = x
-_unwrap_const(x::Expr) = __isnumber(x) ?  eval(x) : x
-unwrap_const(x::Any) = _unwrap_const(x)
-__isnumber(x::Number) = true
-__isnumber(x::Symbol) = x ∈ (:π, :ℯ, :φ, :γ)
-__isnumber(x::Expr) = !(_ismatch(x, !__isnumber))
+function _unwrap_const(x::Symbol)
+    x ∈ (:π, :pi) && return MathConstants.pi
+    x ∈ (:ℯ, :e, ) && return MathConstants.ℯ
+    x ∈ (:φ :golden) && return MathConstants.golden
+    x ∈ (:γ, :eulergamma) && return MathConstants.eulergamma
+    x == :catalan && return MathConstants.catalan
+    return x
+end
+_unwrap_const(x::Expr) = _isnumber(x) ? eval(x) : x
+
+#
+_isnumber(x::Number) = true
+_isnumber(x::Symbol) = x ∈ (:π, :pi, :ℯ, :e, :φ, :golden, :γ, :eulergamma, :catalan)
+_isnumber(x::Expr) = !(_ismatch(x, !_isnumber))
+
+
 
 # to pass to maketerm (sterm)
 symtype(::Real) = Expr
@@ -45,10 +63,9 @@ end
 
 function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
-
         v = isa(v,Number) ? _unwrap_const(v) : v
         if haskey(σ, k)
-            σ[k] != v && return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
+            σ[k] != v && error("repeated key with different value: $k => $v ($(σ[k]))")#return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
         else
             σ = MatchDict(σ, k, v)
         end
@@ -58,6 +75,7 @@ end
 
 #  σ △ σ′ (\bigtriangleup) for every x in the intersection of the domains has same value
 function iscompatible(σ::MatchDict, σ′::MatchDict)
+    (σ == FAIL_DICT || σ′ == FAIL_DICT) && return false
     isempty(σ) && return true
     isempty(σ′) && return true
     for k in keys(σ)
@@ -91,30 +109,36 @@ _isone(x) = isequal(x, 1)
 _groupby(pred, t) = (t = filter(pred,t), f=filter(!pred, t))
 
 
-
 ## Expression related methods
 _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
 
 # need to compare x and p when p is from an expression
 # trick -- SymEngine.Basic <: Number
 # compare Number, Expr, Irrational, Symbol
-eq_expr(a::Any, b::Any) = isequal(a,b)
+
+eq_expr(a::Any, b::Any) = isequal(unwrap_const(a), unwrap_const(b))
+eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(unwrap_const(a), unwrap_const(b)))
+#=
 # symbol
-eq_expr(a::Union{Expr, Number}, b::Symbol) = false
-eq_expr(a::Symbol, b::Union{Expr, Number}) = false
-eq_expr(a::Irrational, b::Symbol) = isequal(Symbol(a), b)
-eq_expr(a::Symbol, b::Irrational) = isequal(a, Symbol(b))
-eq_expr(b::Symbol, a::Number) = false
-# Expr
-eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(a, b))
+#eq_expr(a::Union{Expr, Number}, b::Symbol) = false
+#eq_expr(a::Symbol, b::Union{Expr, Number}) = false
+#eq_expr(a::Irrational, b::Symbol) = isequal(Symbol(a), b)
+#eq_expr(a::Symbol, b::Irrational) = isequal(a, Symbol(b))
+#eq_expr(b::Symbol, a::Number) = false
 eq_expr(a::Expr, b::Number) = eq_expr(b,a)
+
 function eq_expr(a::Number, b::Expr)
+    b′ = unwrap_const(b)
+    isa(b′, Number) && return issequal(a,b′)
+    return false
+    #=
     is_operation(://)(b) || return false
     a1,a2 = numerator(a), denominator(a)
     _, b1,b2 = b.args
     eq_expr(a1, b1) && eq_expr(a2, b2)
+    =#
 end
-
+=#
 # create a term for a pattern (pterm) or a subject (sterm)
 # the former is only for expressions
 # the latter might involve a symbolic type

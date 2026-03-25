@@ -176,9 +176,12 @@ end
         (pat = :((~!a)*sin(~x) ^ 2 + (~!a)*cos(~x) ^ 2),
          sub =  :(sin(2x) ^ 2 + cos(2x) ^ 2),
          len = 1),
-    (pat = :((~x)^(~!m) * (~x)^(~!n)),
-     sub = :(x^2 * x^3),
-     len = 2),
+        (pat = :((~!a)*sin(~x) ^ 2 + (~!a)*cos(~x) ^ 2),
+         sub =  :(x*sin(2x) ^ 2 + x*cos(2x) ^ 2),
+         len = 1),
+        (pat = :((~x)^(~!m) * (~x)^(~!n)),
+         sub = :(x^2 * x^3),
+         len = 2),
 
     ]
 
@@ -186,6 +189,7 @@ end
         σs = _eachmatch(pat, sub, MP())
         γs = _eachmatch(pat, sub, R2())
         u = collect(σs)
+        length(u) != len && @show i
         @test length(u) == len
         @test length(γs) ≤ length(u)
         #length(γs) < length(u) && (@show pat, sub, :different)

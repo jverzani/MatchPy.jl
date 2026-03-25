@@ -18,10 +18,6 @@
 
 # Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables by Manuel Krebber
 
-# add in SymbolicUtils
-# * defslots -- A DefSlot variable is written as ~!x. Works like a normal slot, but can also take default values if not present in the expression.
-# * segment -- Star variables (0, 1 or more)
-# * add guards
 
 # 𝐹 function heads
 # 𝑋 variables: regular, [wild, star, plus]
@@ -34,14 +30,11 @@
 # 𝑋Xᵖˡᵘˢ   plus variables -- `_is_Plus`
 # Xˢᵗᵃʳ    star variables -- `_is_Star`
 
-# clean up iterators
-# we use nothing to terminate a branch, flatten to branch
-clean(itr) = Iterators.filter(!isnothing, Iterators.flatten(itr))
-#    Iterators.flatten(Iterators.filter(!isnothing, itr))
 
 # t matches s if there is a match with σ(t) = s
 soperation(f::Any) = Symbol(operation(f))
 soperation(f::Symbol) = f
+
 # normalize pattern
 # sub  pat  pat′
 # sqrt ^    sqrt
@@ -144,12 +137,11 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
     elseif n == 1
         if any(is_defslot, arguments(p))
-            asₚ = copy(arguments(p))
             # Defslots -- first check if there is a match with a slot variable
             # if so, return that. Else, replace with default value and move on.
+            asₚ = copy(arguments(p))
             i = findfirst(is_defslot, asₚ)
             pᵢ = asₚ[i]
-            #qᵢ = :(~$(pᵢ.args[2].args[2]))
             qᵢ = :(~$(varname(pᵢ)))
             asₚ[i] = qᵢ
 
@@ -161,7 +153,8 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
                 return θ′
             else
                 opₚ = operation(p)
-                θ = (match_dict(σ′, dvar => defslot_op_map[opₚ]) for σ′ ∈ θ)
+                σ′′ = match_dict(dvar => defslot_op_map[opₚ])
+                θ = (merge_match(σ′,σ′′) for σ′ ∈ θ if iscompatible(σ′,σ′′))
                 # replace pieces of `p`
                 if opₚ ∈ (:(+), :(*))
                     bs = [asₚ[j] for j in 1:length(asₚ) if j != i]
@@ -173,14 +166,12 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
             return match_one_to_one(ss, p, fₐ, θ)
         end
-
         s = only(ss)
         iscall(s) || return ∅ # p is non constant, so must be compound, s should be as well
 
         p = normalize_pattern(p,s)
         opₛ = operation(s)
         𝑜𝑝ₛ = Symbol(opₛ)
-
         if operation(p) == 𝑜𝑝ₛ
             ss, ps = arguments(s), arguments(p)
             fₐ′ = isassociative(opₛ) ? opₛ : nothing
@@ -195,9 +186,8 @@ end
 # 3.3 match non-commutative function
 #     return iterator of matches
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
-    @show :ms, ss, ps, collect(θ)
+    #@show :ms, ss, ps, collect(θ)
     n, m = length(ss), length(ps)
-
     nstar = count(is_segment, ps)
     m - nstar > n && return ∅ # total number of arguments required in the pattern
                               # exceeds the number of arguments in the subject.
@@ -207,23 +197,16 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
         nplus += count(is_slot, ps) # ount regular vars as plus vars in assoc. function
     end
 
+    if iszero(nstar) && iszero(nplus) && n == m
+        for (s,p) ∈ zip(ss, ps)
+            θ = match_one_to_one([s], p, fₐ, θ)
+        end
+        return θ
+
+    end
+
     nfree = n - m + nstar
     nseq = nstar + nplus
-
-    #=
-    m < n && iszero(nstar) && iszero(nplus) && return ∅
-    @show n,m,nstar, nplus
-    # XXX check for non-variables match, if so return ()
-    if nstar + nplus == 0 && !any(has_𝑋, ps)
-        # no wildcards, do we match?
-        length(ss) == length(ps) || return ∅
-        all(eq_expr(s,p) for (s,p) ∈ zip(ss, ps)) && return θ
-        return ∅
-    end
-    =#
-
-#    iszero(nseq) && iszero(nfree) && return ∅
-#XX    iszero(nseq) && nfree > 0 && return ∅
     λ = ks -> begin
         #(!isempty(ks) && sum(ks) != nfree) && return nothing
         i, j = 1, 1 # 0,0 in 0-based
@@ -247,17 +230,17 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
         θ′ == ∅ && return nothing
         return θ′
     end
-    i = multiexponents(nseq, nfree) # For every distribution of free arguments is ss among the
+   i = multiexponents(nseq, nfree) # For every distribution of free arguments is ss among the
                                     # seq. vars...
     ii = Iterators.map(λ, i)
-    iii = Iterators.flatten(Iterators.filter(!isnothing, ii))
-    return iii
+    iii = Iterators.filter(!isnothing, ii)
+    Iterators.flatten(iii)
 end
 
 ## ---- commutative (associative when fₐ != nothing)
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-    @show :mcs, ss, ps
+    #@show :mcs, ss, ps
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -271,10 +254,11 @@ function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),)
     ii = Iterators.map(enumerate(i)) do (j,a)
         ss, ps, σ = a
         itr = _match_defslot_patterns(ss, ps, fₐ, σ)
-        itr = clean(itr)
     end
 
-    iii = Iterators.map(ii) do a
+    iia = Iterators.flatten(ii)
+
+    iii = Iterators.map(iia) do a
         ss, ps, σ = a
         itr = _match_non_variable_patterns(ss, ps, fₐ, σ)
         itr
@@ -316,10 +300,68 @@ function _match_constant_patterns(ss, ps)
     return (ss′, ps′)
 end
 
+
+# match defslot patterns early
+# return iterator of (ss, ps, σ) values
+function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
+    #@show :mds, ss, ps, fₐ
+    λ = p -> begin
+        is_defslot(p) ||
+            (is_operation(:^)(p) && is_defslot(last(arguments(p))))
+    end
+    inds = findall(λ, ps)
+    isempty(inds) && return ((ss, ps, σ),)
+    θ = Any[]
+
+    ## we just create matching trees with all possible choices of
+    ## defslots being slots or their defaults and let the algorithm trim
+    ## them down.
+
+    for inds′ = powerset(1:length(inds)) # |inds| slot variables
+
+        # we use default for inds′, nondefault for others
+        σ′ = match_dict()
+        ps′ = copy(ps)
+
+        # use default here; trim ps′, set σ′
+        for j ∈ inds′
+
+            i′ = inds[j]
+            pᵢ = ps[i′]
+            if is_defslot(pᵢ)
+                ps′ = vcat(ps′[1:i′-1], ps′[i′+1:end])
+                σ′ = match_dict(σ′, varname(pᵢ) => defslot_op_map[Symbol(fₐ)])
+            else # power
+                a, b = arguments(pᵢ)
+                ps′ = vcat(ps′[1:i′-1], a, ps′[i′+1:end])
+                σ′ = match_dict(σ′, varname(b) => defslot_op_map[:^])
+            end
+        end
+
+        # replace defslot with slot
+        for j in setdiff(eachindex(inds), inds′)
+            i′ = inds[j]
+            pᵢ = ps[i′]
+            if is_defslot(pᵢ)
+                ps′[i′] = :(~$(varname(pᵢ)))
+            else
+                a, b = arguments(pᵢ)
+                ps′[i′] = Expr(:call, :^, a, :(~$(varname(b))))
+            end
+        end
+        # if compatible, add
+        if iscompatible(σ, σ′)
+            push!(θ, (ss, ps′, merge_match(σ, σ′)))
+        end
+    end
+    return θ
+end
+
 # trims down ss, ps
 # returns (ss,ps) or nothing
 function  _match_matched_variables(ss, ps, σ)
     #@show :mmv, ss, ps, σ
+
     # subtract from, ps, ss previously matched variables
     (isnothing(σ) || isempty(σ)) && return (ss, ps)
     ps′, psₒ = _groupby(is_𝑋, ps)
@@ -342,64 +384,14 @@ function  _match_matched_variables(ss, ps, σ)
 
 end
 
-
-# match defslot patterns early
-# return iterator of (ss, ps, σ) values
-function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
-    #@show :mds, ss, ps, fₐ
-    i = findfirst(is_defslot(ps))
-    if !isnothing(i)
-        dslot = ps[i]
-        inds = findall(==(dslot), ps)
-        𝑢 = varname(dslot)
-        u = :(~$(𝑢))
-        ps′ = copy(ps)
-        ps′[inds] = u
-        θ = match_commutative_sequence(ss, ps′, fₐ, σ)
-        if !isempty(θ)
-            return (([],[], σ) for σ ∈ θ)
-        else
-            σ = match_dict(σ, 𝑢 => defslot_op_map[Symbol(fₐ)])
-            return _match_defslot_patterns(ss, ps[setdiff(eachindex(ps), inds)], fₐ, σ)
-        end
-        #=
-    elseif any(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
-        i =  findfirst(p -> is_operation(:^)(p) && is_defslot(arguments(p)[2]), ps)
-        ps′ = copy(ps)
-        p = ps′[i]
-        a, b = arguments(p)
-        u = Symbol(join(rand("abcdefghijklmnopqrstuvwxyz", 8)))
-        wvar = :(~$u)
-        ps′[i] = pterm(:(^), (a, wvar))
-        θ = match_commutative_sequence(ss, ps′, fₐ, (σ,))
-        if !isempty(θ)
-            λ = σ -> begin
-                val = get(σ, wvar, nothing)
-                σ = match_dict(σ, varname(b) => val)
-                pred = !=(wvar)∘first
-                Iterators.filter(pred, σ) |> collect
-                #Base.ImmutableDict([kv for kv ∈ σ if first(kv) != wvar]...) # XXX clean me up
-            end
-            return (((),(),λ(σ)) for σ in θ)
-        else
-            ps′[i] = a
-            σ = match_dict(σ, varname(b) => defslot_op_map[:(^)])
-            return ((ss, ps′, σ),)
-        end
-=#
-    else
-        return ((ss, ps, σ),)
-    end
-end
-
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
 function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
-    @show :mnvp, ss, ps, σ
+    #@show :mnvp, ss, ps, σ
+
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
     ss, ps = out
-
     ps′, ps′′ = _groupby(!is_𝑋, ps)
 
     n = length(ps′)
@@ -408,12 +400,12 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
 
     i = permutations(1:length(ss), n)
     f = inds -> begin
-        @show inds, σ
         ss′= ss[inds]
         θ′ = (σ,)
         for (s,p) ∈ zip(ss′, ps′)
             p, θ′ = check_nonmatching_defslot(s,p, θ′)
             p = normalize_pattern(p,s) # rewrite pattern if needed
+            (iscall(s) && iscall(p)) || return nothing
             soperation(s) == operation(p) || return nothing
             fₐ′ = isassociative(operation(s)) ? operation(s) : nothing
             λ = iscommutative(fₐ′) ? match_commutative_sequence : match_sequence
@@ -429,29 +421,34 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
     iv = Iterators.flatten(iii)
 end
 
-# does p have a + or * defslot that won't match, then try and fix
+# does p have a defslot that doesn't match at the operation level, then try and fix
+# before the operations don't match
 function check_nonmatching_defslot(s, p, θ′)
-    opₚ = operation(p)
-    if iscall(p) && (!iscall(s) || (Symbol(operation(s)) != opₚ))
-        if opₚ ∈ (:+, :*)
-            argsₚ = arguments(p)
-            inds = findall(is_defslot, argsₚ)
-            if !isempty(inds)
-                val = defslot_op_map[opₚ]
-                σ′ = match_dict((varname.(argsₚ[inds]) .=> val)...)
-                θ′ = (merge_match(σ, σ′) for σ ∈ θ′)
-                ps = argsₚ[setdiff(eachindex(argsₚ), inds)]
-                p′ = pterm(opₚ, ps)
-                return p′, θ′
-            end
-        elseif opₚ == :^
-            a,b = arguments(p)
-            if is_defslot(b)
-                val = defslot_op_map[opₚ]
-                σ′ = match_dict(varname(b) => val)
-                θ′ = (merge_match(σ, σ′) for σ ∈ θ′)
-                p′ = a
-                return p′, θ′
+    #@show :cnd, s, p
+    if iscall(p)
+        opₚ = operation(p)
+        if (!iscall(s) || (Symbol(operation(s)) != opₚ))
+            if opₚ ∈ (:+, :*)
+                argsₚ = arguments(p)
+                inds = findall(is_defslot, argsₚ)
+                if !isempty(inds)
+                    val = defslot_op_map[opₚ]
+                    σ′ = match_dict((varname.(argsₚ[inds]) .=> val)...)
+                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+
+                    ps = argsₚ[setdiff(eachindex(argsₚ), inds)]
+                    p′ = pterm(opₚ, ps)
+                    return p′, θ′
+                end
+            elseif opₚ == :^
+                a,b = arguments(p)
+                if is_defslot(b)
+                    val = defslot_op_map[opₚ]
+                    σ′ = match_dict(varname(b) => val)
+                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′)
+                    p′ = a
+                    return p′, θ′
+                end
             end
         end
     end
@@ -459,11 +456,12 @@ function check_nonmatching_defslot(s, p, θ′)
 end
 
 
-# match x_ type variables
+# match ~x type variables
 # return iterator of (ss, ps, σ)
 function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
+    #@show :mrv, ss, ps, fc, σ
+    isempty(ps) && !isempty(ss) && return ∅
     isempty(ps) && return ((ss, ps, σ),)
-    #@show :mrv, ss, ps, σ
     out =  _match_matched_variables(ss, ps, σ)
     isnothing(out) && return ∅
 
@@ -502,8 +500,10 @@ end
 
 # return iterator of matches, σ
 function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
-    isempty(ps) && return (σ, )
     #@show :msv, ss, ps, fc, σ
+
+    isempty(ps) && !isempty(ss) && return ∅
+    isempty(ps) && return (σ, )
 
     out =  _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
@@ -547,7 +547,7 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
                 all(sum(ui[i] for ui in u) > 0 for i in 1:n1)
         end
 
-    iii = Iterators.map(ii) do u
+    iii = Iterators.map(Iterators.reverse(ii)) do u
         σ′ = σ
         for (j, v) ∈ enumerate(vars)
             vv = []
@@ -577,12 +577,12 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
                     if _evalguard(pred, vv′)
                         σ′′ = match_dict(var => vv′)
                     else
-                        return nothing # FAIL_DICT
+                        return nothing
                     end
                 else
                     σ′′ = match_dict(var => vv′)
                 end
-                iscompatible(σ′, σ′′) || return break
+                iscompatible(σ′, σ′′) || return nothing
                 σ′ = merge_match(σ′, σ′′)
             end
         end
@@ -590,7 +590,6 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
         return merge_match(σ, σ′)
     end
 
-    #return iii # XXX
     iv = Iterators.filter(!isnothing, iii)
     iv
 end
