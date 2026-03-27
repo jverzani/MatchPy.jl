@@ -4,17 +4,23 @@ This package provides two matching algorithms.
 
 * An implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as `MatchPy`.
 
-* A slight modification of a matching algorithm developed in the `SymbolicIntegration` package in [rule2.jl](https://github.com/JuliaSymbolics/SymbolicIntegration.jl/blob/main/src/methods/rule_based/rule2.jl). This implementation only depends on the lightweight `TermInterface` package and the `Combinatorics` package.
+* A slight modification of a matching algorithm developed in the `SymbolicIntegration` package in [rule2.jl](https://github.com/JuliaSymbolics/SymbolicIntegration.jl/blob/main/src/methods/rule_based/rule2.jl).
 
-Both find all matches of a pattern employing wildcards against a subject. The patterns are specified with Julia expressions. The latter algorithm allocates much less and is generally an order faster.
+These implementations only depend on the lightweight `TermInterface` package and the `Combinatorics` package.
+
+Both algorithm find all matches of a pattern employing wildcards against a subject. The patterns are specified with Julia expressions. The latter algorithm allocates much less and is generally an order faster, but does not disambiguate associative from commutative.
 
 ## Interface
 
-The choice of which algorithm is specified by `MatchPy.MP()` (the default) or `MatchPy.R2()`. The matchpy algorithm returns a generator which can be collected.
+Nothing is exported, so all methods must be qualified.
+
+The choice of which algorithm is specified by `MatchPy.MP()` (the default) or `MatchPy.R2()`.
+
+The primary method is `_eachmatch` which returns an iterator of matches. The matchpy algorithm returns this iterators as a generator which can be collected.
 
 The `MatchPy._match` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
 
-The `MatchPy._replace` method can be used to replace parts of an expression with other parts.
+The `MatchPy._rewrite` method replaces matches of a pattern in another expressions. The `MatchPy._replace` method walks through an expression, and can be used to replace parts of an expression with other parts.
 
 ### Examples
 
@@ -54,17 +60,18 @@ julia> MatchPy._replace(:(cos(2x)^2 + sin(2x)^2), :(sin(~x)^2 + cos(~x)^2) => 1)
 
 Patterns are specified with wildcards or which there is a variety. We follow the specification of `SymbolicUtils`.
 
-* A "slot variable", specified as `:(~x)`, matches one argument.
+* A "slot variable", specified as `:(~x)`, matches one argument. For the MatchPy algorithm, an associative functions may have a slot variable match one or more arguments.
 
-* A "default slot variable", specified as `:(~!x)`, matches 0 or 1 arguments. First, a slot variable is replaced to see if there is a match. If there is none, an attempt to find a match with the variable replaced by a default value (for an operation of `+` this is `0`, for `*` this is `1`, and for an exponent, also `1`.
+* A "default slot variable", specified as `:(~!x)`, matches 0 or 1 arguments. If there are 0 matches a default value is use (for an operation of `+` this is `0`, for `*` this is `1`, and for an exponent, also `1`).
 
 * A "segment variable", specified `:(~~x)`, matches 0, 1 or more of the arguments. The match is returned as a collection of matches.
+
+* Wildcards may have predicates attached to them through the notation `:(~x::predicate)`. A match only occurs when the accompanying predicate is `true` for the proposed value.
 
 In addition, for the MatchPy algorithm there is:
 
 * A "plus variable", specified as `:(~~~x)`, matches 1 or more of the arguments similar to a segment variable.
 
-Wildcards may have predicates attached to them through the notation `:(~x::predicate)`.
 
 ### Examples
 

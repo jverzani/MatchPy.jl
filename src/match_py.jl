@@ -1,7 +1,19 @@
-#= ----- TODO ----
+
+#=
+Implement algorithm, through Ch. 3, of of matchpy paper:
+
+Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables by Manuel Krebber
+
+We use expressions to indicate patterns with wildcards specified as:
+
+* `~x`, `~x::pred`
+* `~!x`
+* `~~x`, `~~x::pred`
+* `~~~x`, `~~~x::pred`
+
 * ✓ patterns are expressions might match non-expression
-*   defslots should work
-*   all wildcard variables need unique `varname`s
+* ✓ defslots should work (could clean up)
+* ✓ all wildcard variables need unique `varname`s
 * ✓ neim pass -- normalize exponents. Do this normalization only on the pattern side
   that is if opₛ, opₚ = sqrt, ^ then change opₚ = sqrt.
 * ✓ assoc/comm + ~x and wrap in function (e.g. ~x + ~a match a + b + c --> (a+b),c, ...
@@ -9,28 +21,24 @@
 #     write with: :(*(~~x) + *(~β, ~~x)) => :(*(1 + ~β, (~~x)...))
 # ✓ ~~~x is 1 or more, ~~x is 0,1 or more
 # ✓ goal is rewrite rule to handle :(*(~a, ~~x) + *(~b, ~~x)) => :((~a+~b) * *(~~x...))
-# ✓ functions take a container of σs and either reduce (filter) or build opun (product)
+# ✓ functions take a container of σs and either reduce (filter) or build opon (product)
 #   reduction is like pruning a tree and uses `nothing` value to indicate this;
+
+
+
+𝐹 function heads
+𝑋 variables: regular, [wild, star, plus]
+
+split symbolic objects into
+𝐹₀ 0-arity expressions
+𝐿 all symbolic variables
+𝑋 wildcard expressions which split into
+Xʳᵉᵍᵘˡᵃʳ regular        -- `_is_Wild`
+𝑋Xᵖˡᵘˢ   plus variables -- `_is_Plus`
+Xˢᵗᵃʳ    star variables -- `_is_Star`
+
+
 =#
-
-# implement algorithm of matchpy paper through Ch. 3
-# from SimpleExpressions but modified to work with expressions for patterns
-
-# Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables by Manuel Krebber
-
-
-# 𝐹 function heads
-# 𝑋 variables: regular, [wild, star, plus]
-
-# split symbolic objects into
-# 𝐹₀ 0-arity expressions
-# 𝐿 all symbolic variables
-# 𝑋 wildcard expressions which split into
-# Xʳᵉᵍᵘˡᵃʳ regular        -- `_is_Wild`
-# 𝑋Xᵖˡᵘˢ   plus variables -- `_is_Plus`
-# Xˢᵗᵃʳ    star variables -- `_is_Star`
-
-
 # t matches s if there is a match with σ(t) = s
 soperation(f::Any) = Symbol(operation(f))
 soperation(f::Symbol) = f
@@ -119,15 +127,11 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
             return union_merge(θ, σ′)
         end
-
+    elseif iscall(p) && any(has_defslot, arguments(p))
+        return clear_defslots(ss, p, fₐ, θ)
     elseif is_𝑋(p)                      # sequence variable?
         var = varname(p)
         value = is_slot_or_defslot(p) && !isnothing(fₐ) ? sterm(fₐ, ss) : ss
-        #if is_slot_or_defslot(p) && !isnothing(fₐ) # regular and associative function
-        #    value = sterm(fₐ, ss)
-        #else
-        #    value = ss
-        #end
         has_predicate(p) && !_evalguard(get_predicate(p), value) && return ∅
         σ′ = match_dict(var => value)
 
@@ -136,36 +140,6 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
         end
 
     elseif n == 1
-        if any(is_defslot, arguments(p))
-            # Defslots -- first check if there is a match with a slot variable
-            # if so, return that. Else, replace with default value and move on.
-            asₚ = copy(arguments(p))
-            i = findfirst(is_defslot, asₚ)
-            pᵢ = asₚ[i]
-            qᵢ = :(~$(varname(pᵢ)))
-            asₚ[i] = qᵢ
-
-            dvar = varname(pᵢ)
-
-            𝑝 = pterm(operation(p), asₚ)
-            θ′ = match_one_to_one(ss, 𝑝, fₐ, θ)
-            if !isempty(θ′)
-                return θ′
-            else
-                opₚ = operation(p)
-                σ′′ = match_dict(dvar => defslot_op_map[opₚ])
-                θ = (merge_match(σ′,σ′′) for σ′ ∈ θ if iscompatible(σ′,σ′′))
-                # replace pieces of `p`
-                if opₚ ∈ (:(+), :(*))
-                    bs = [asₚ[j] for j in 1:length(asₚ) if j != i]
-                    p = pterm(opₚ, bs)
-                elseif opₚ == :(^)
-                    p = asₚ[1]
-                end
-            end
-
-            return match_one_to_one(ss, p, fₐ, θ)
-        end
         s = only(ss)
         iscall(s) || return ∅ # p is non constant, so must be compound, s should be as well
 
@@ -181,6 +155,61 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
     end
     return ∅
+end
+
+
+function clear_defslots(ss, p, fₐ, θ)
+    inds = findall(has_defslot, arguments(p))
+    opₚ = operation(p)
+    ps = arguments(p)
+
+    θ′′ = MatchDict[]
+    for inds′ = powerset(1:length(inds))
+        # we use default for inds′, nondefault for others
+        ps′ = copy(ps)
+        σ′ = match_dict()
+        for j ∈ inds′
+            i′ = inds[j]
+            pᵢ = ps[i′]
+            # p is ~!x or (a)^(~!x)
+            if is_defslot(pᵢ)
+                ps′ = vcat(ps′[1:i′-1], ps′[i′+1:end])
+                defval = defslot_op_map[opₚ]
+                σ′ = match_dict(σ′, varname(pᵢ) => defval)
+            else
+                # power
+                a, b = arguments(pᵢ)
+                ps′ = vcat(ps′[1:i′-1], a, ps′[i′+1:end])
+                defval = defslot_op_map[:^]
+                σ′ = match_dict(σ′, varname(b) => defval)
+            end
+        end
+        # replace defslot with slot
+        for j in setdiff(eachindex(inds), inds′)
+            i′ = inds[j]
+            pᵢ = ps[i′]
+            if is_defslot(pᵢ)
+                pᵢ′ = :(~$(varname(pᵢ)))
+            else
+                a, b = arguments(pᵢ)
+                pᵢ′ = Expr(:call, :^, a, :(~$(varname(b))))
+            end
+            # replace in ps′ which may be shorter than ps
+            i = findall(==(pᵢ), ps′)
+            ps′[i] .= (pᵢ′,)
+        end
+
+        p′ = pterm(operation(p), ps′)
+        θ′ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+        itr = match_one_to_one(ss, p′, fₐ, θ′)
+        (isempty(itr) || isnothing(itr)) && continue
+        #@show inds′, collect(itr)
+        isempty(inds′) && return itr # defslot not needed
+        θ′′ = union(θ′′, itr)
+    end
+
+    return θ′′
+
 end
 
 # 3.3 match non-commutative function
@@ -240,7 +269,7 @@ end
 ## ---- commutative (associative when fₐ != nothing)
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-    #@show :mcs, ss, ps
+    #@show :mcs, ss, ps, collect(θ)
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -282,8 +311,9 @@ function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),)
         itr = _match_sequence_variables(ss, ps, fₐ, σ)
     end
 
-    va = Iterators.flatten(v)
-    Iterators.filter(!isnothing, va)
+    va = Iterators.filter(!isnothing, v)
+    vb = Iterators.flatten(va)
+    vb
 
 end
 
@@ -301,15 +331,13 @@ function _match_constant_patterns(ss, ps)
 end
 
 
-# match defslot patterns early
+# match defslotpatterns early
 # return iterator of (ss, ps, σ) values
 function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mds, ss, ps, fₐ
-    λ = p -> begin
-        is_defslot(p) ||
-            (is_operation(:^)(p) && is_defslot(last(arguments(p))))
-    end
-    inds = findall(λ, ps)
+
+    inds = findall(has_defslot, ps)
+
     isempty(inds) && return ((ss, ps, σ),)
     θ = Any[]
 
@@ -318,23 +346,23 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     ## them down.
 
     for inds′ = powerset(1:length(inds)) # |inds| slot variables
-
         # we use default for inds′, nondefault for others
         σ′ = match_dict()
         ps′ = copy(ps)
 
         # use default here; trim ps′, set σ′
         for j ∈ inds′
-
             i′ = inds[j]
             pᵢ = ps[i′]
             if is_defslot(pᵢ)
                 ps′ = vcat(ps′[1:i′-1], ps′[i′+1:end])
-                σ′ = match_dict(σ′, varname(pᵢ) => defslot_op_map[Symbol(fₐ)])
+                σ′ = match_dict(σ′, :defslot=>true,
+                                varname(pᵢ) => defslot_op_map[Symbol(fₐ)])
             else # power
                 a, b = arguments(pᵢ)
                 ps′ = vcat(ps′[1:i′-1], a, ps′[i′+1:end])
-                σ′ = match_dict(σ′, varname(b) => defslot_op_map[:^])
+                σ′ = match_dict(σ′, :defslot => true,
+                                varname(b) => defslot_op_map[:^])
             end
         end
 
@@ -343,12 +371,15 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
             i′ = inds[j]
             pᵢ = ps[i′]
             if is_defslot(pᵢ)
-                ps′[i′] = :(~$(varname(pᵢ)))
+                pᵢ′ = :(~$(varname(pᵢ)))
             else
                 a, b = arguments(pᵢ)
-                ps′[i′] = Expr(:call, :^, a, :(~$(varname(b))))
+                pᵢ′ = Expr(:call, :^, a, :(~$(varname(b))))
             end
+            k = findall(==(pᵢ), ps′)
+            ps′[k] .= (pᵢ′,)
         end
+
         # if compatible, add
         if iscompatible(σ, σ′)
             push!(θ, (ss, ps′, merge_match(σ, σ′)))
@@ -461,6 +492,8 @@ end
 function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
     #@show :mrv, ss, ps, fc, σ
     isempty(ps) && !isempty(ss) && return ∅
+    isempty(ss) && !isempty(ps) && return ∅
+
     isempty(ps) && return ((ss, ps, σ),)
     out =  _match_matched_variables(ss, ps, σ)
     isnothing(out) && return ∅
@@ -469,6 +502,7 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
 
     # fₐ is  commutative, maybe associative
     isassociative(fc) && return ((ss, ps, σ),) # associative turns ~x into ~~x
+
 
     ps_reg, ps′′ = _groupby(is_slot, ps)
     isempty(ps_reg) && return ((ss, ps, σ),)
@@ -503,6 +537,8 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
     #@show :msv, ss, ps, fc, σ
 
     isempty(ps) && !isempty(ss) && return ∅
+    isempty(ss) && !isempty(ps) && return ∅
+
     isempty(ps) && return (σ, )
 
     out =  _match_matched_variables(ss, ps, σ)

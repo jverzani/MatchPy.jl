@@ -3,6 +3,7 @@ abstract type MatchType end
 struct MP <: MatchType end
 struct R2 <: MatchType end
 struct R1 <: MatchType end
+
 ### ---- match, eachmatch, replace
 
 function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=MP())
@@ -34,24 +35,7 @@ function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R1)
 end
 
 
-
-# T is symbolic type (Expr, ...)
-# rhs an expression
-function _rewrite(T, σ::MatchDict, rhs)
-    λ = rhs -> begin
-        if is_𝑋(rhs)
-            var = varname(rhs)
-            haskey(σ, var) ? σ[var] : error("XXX no match  in σ for $var XXX $rhs $σ")
-        else
-            rhs
-        end
-    end
-    postwalk(T, λ, rhs)
-end
-
-_hasoperation(ex) = !is_𝑋(ex) && (iscall(ex) || isexpr(ex))
-_children(ex) = iscall(ex) ? arguments(ex) : children(ex)
-_head(ex) = iscall(ex) ? operation(ex) : head(ex)
+## --- walk over expression
 
 function walk(T, ex, inner, outer)
     _hasoperation(ex) || return outer(ex)
@@ -59,18 +43,37 @@ function walk(T, ex, inner, outer)
     outer(ex′)
 end
 
-function postwalk(T, f, ex)
-    walk(T, ex, ex -> postwalk(T,f,ex), f)
+function postwalk(f, ex, T)
+    walk(T, ex, ex -> postwalk(f,ex, T), f)
 end
+prewalk(f, x, T)  = walk(T, f(x), x -> prewalk(f, x, T), identity)
+
+# utils to make more generic
+_hasoperation(ex) = !is_𝑋(ex) && (iscall(ex) || isexpr(ex))
+_children(ex) = iscall(ex) ? arguments(ex) : children(ex)
+_head(ex) = iscall(ex) ? operation(ex) : head(ex)
 
 
+# T is symbolic type (Expr, ...) passed to sterm in walk
+# rhs an expression
+function _rewrite(T, σ::MatchDict, rhs)
+    postwalk(rhs, T) do rhs
+        if is_𝑋(rhs)
+            var = varname(rhs)
+            haskey(σ, var) ? σ[var] : error("XXX no match  in σ for $var XXX $rhs $σ")
+        else
+            rhs
+        end
+    end
+end
 
 # replace variables in rhs with values looked upin σ
 # return an Expr (or Symbol or literal number)
-function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=MP())
+# From SymbolicIntegration.jl
+function _rewrite(σ::MatchDict, rhs::Expr)
     if !iscall(rhs)
         if isexpr(rhs)
-            args = [rewrite(σ, a, M) for a ∈ children(rhs)]
+            args = [_rewrite(σ, a) for a ∈ children(rhs)]
             return Expr(head(rhs), args...)
         else
             return rhs
@@ -87,15 +90,16 @@ function rewrite(σ::MatchDict, rhs::Expr, M::MatchType=MP())
     end
 
     # otherwise call recursively on arguments and then reconstruct expression
-    args = [rewrite(σ, a, M) for a ∈  arguments(rhs)]
+    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
     return pterm(operation(rhs), args; elide=false)
 end
 
-rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
-rewrite(matches::MatchDict, rhs::Real, M=nothing) = rhs::Real
-rewrite(matches::MatchDict, rhs::String, M=nothing) = rhs::String
-rewrite(matches::MatchDict, rhs::LineNumberNode, M=nothing) = nothing::Nothing
-rewrite(matches::MatchDict, rhs::QuoteNode, M=nothing) = rhs::QuoteNode
+_rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
+_rewrite(matches::MatchDict, rhs::Real, M=nothing) = rhs::Real
+_rewrite(matches::MatchDict, rhs::String, M=nothing) = rhs::String
+_rewrite(matches::MatchDict, rhs::LineNumberNode, M=nothing) = nothing::Nothing
+_rewrite(matches::MatchDict, rhs::QuoteNode, M=nothing) = rhs::QuoteNode
+
 
 
 """
@@ -251,7 +255,7 @@ function __replace_arguments(ex, u, v, M::MatchType)
 
     if !isnothing(σ)
         σ == () && return v # no substitution
-        return rewrite(σ, v, M)
+        return _rewrite(σ, v)
     end
 
     # peel off
@@ -260,149 +264,3 @@ function __replace_arguments(ex, u, v, M::MatchType)
     return pterm(op, args′)
 
 end
-
-
-## ---- simplify
-## Simplify .. might need unwrap_const, eq_expr defined.
-## ------- rules to apply
-canonicalize = [
-    :(*(~a, ~x) + *(~b, ~x)) => :(*(~a + ~b, ~x)),
-    :((~x)^(~z::iszero))       => :(one(~x)),
-    :((~x)^(~z::isone))        => :(~x),
-    :((~x::isone)^~z)          => :(one(~x)),
-    :(sqrt(~x))                => :((~x)^(1//2)),
-    :(cbrt(~x))                => :((~x)^(1//3)),
-    #        :(ℯ^(~z)) => :(exp(~x)),
-    :(exp(~z::iszero))         => 1,
-    :(exp(~z::isone))          => ℯ,
-
-    :(sin(~x)/cos(~x)) => :(tan(~x)),
-    :(sin(~x)*cot(~x)) => :(cos(~x)),
-    :(cos(~x)/sin(~x)) => :(cot(~x)),
-    :(cos(~x)*cot(~x)) => :(sin(~x)),
-
-]
-
-canonicalize_expand = [
-    :(*(~a, ~x) + *(~b, ~x)) => :(*(~a + ~b,~x)),
-    :((~x)^(~z::iszero))       => :(one(~x)),
-    :((~x)^(~z::isone))        => :(~x),
-    :((~x::isone)^~z)          => :(one(~x)),
-    :(sqrt(~x))                => :((~x)^(1//2)),
-    :(cbrt(~x))                => :((~x)^(1//3)),
-
-    :((~x)^(1//2))             => :(sqrt(~x)),
-    :((~x)^(1//3))             => :(cbrt(~x)),
-
-    :(ℯ^(~z)) => :(exp(~x)),
-    :(exp(~z::iszero))         => 1,
-    :(exp(~z::isone))          => ℯ,
-
-    :(sin(~x)/cos(~x)) => :(tan(~x)),
-    :(sin(~x)*cot(~x)) => :(cos(~x)),
-    :(cos(~x)/sin(~x)) => :(cot(~x)),
-    :(cos(~x)*cot(~x)) => :(sin(~x)),
-
-]
-
-
-# https://docs.sympy.org/latest/tutorials/intro-tutorial/simplification.html
-powsimp = [
-    :((~x)^(~!m) * (~x)^(~n)) => :((~x)^(~m + ~n)),
-    :((~x)^(~!m) * (~y)^(~m)) => :((~x*~y)^(~m)), # needs x,y > 0
-    :(((~x)^(~m))^(~n))        => :((~x)^(~m*~n)),
-]
-expand_pow = reverse.(powsimp)
-
-expsimp = [
-    :(exp(~x) * exp(~y)) => :(exp(~x + ~y)),
-    :(exp(~x)^(~y))      => :(exp(~x * ~y))
-]
-expand_exp = reverse.(expsimp)
-
-logsimp = [
-    :((~!a)*log(~x) + (~!a)*log(~y))    => :(~a*log(~x*~y)),
-    :((~n)* log(~x))                    => :(log((~x)^(~n))),
-]
-expand_log = reverse.(logsimp)
-
-trigsimp = [
-    :((~!a) * sin(~x)^2 + (~!a) * cos(~x)^2) => :(~a),
-    :((~!a) * sinh(~x)^2 + (~!a) * cosh(~x)^2) => :(~a*cos(2*~x)),
-
-
-    :((~!a) * cos(~x)^2 - (~!a) * sin(~x)^2)   => :(~a * cos(2*~x)),
-    :((~!a) * cosh(~x)^2 + (~!a) * sinh(~x)^2) => :(~a * cosh(2*~x)),
-
-
-    :(sin(~x)*cos(~y) + sin(~y)*cos(~x))     => :(sin(~x + ~y)),
-    :(sinh(~x)*cosh(~y) + sinh(~y)*cosh(~x)) => :(sinh(~x + ~y)),
-
-    :(cos(~x)*cos(~y) - sin(~y)*sin(~x))     => :(cos(~x + ~y)),
-    :(cosh(~x)*cosh(~y) + sinh(~y)*sinh(~x)) => :(cosh(~x + ~y)),
-]
-expand_trig = reverse.(trigsimp)
-
-trigsimpa = [
-    :((~m::iseven)*sin(~x)*cos(~x))   => :(div(unwrap_const(~m),2)*sin(2*~x)),
-    :((~m::iseven)*sinh(~x)*cosh(~x)) => :(div(unwrap_const(~m),2)*sinh(2*~x)),
-
-    :((~!a) * cos(~x)^2 + (~!a) * sin(~x)^2)   => :(~a),
-    :((~!a) * cosh(~x)^2 - (~!a) * sinh(~x)^2) => :(~a),
-]
-
-simplify_rules = vcat(canonicalize, powsimp, expsimp, logsimp, trigsimp, trigsimpa)
-expand_rules = vcat(canonicalize, expand_pow, expand_exp, expand_trig)
-
-## -----------------------------------------------------##
-function __resolve(T, ex, rs)
-    n = 1
-    while n < 10
-        ex′ = _postwalk(T, ex, rs)
-        isnothing(ex′) && return ex
-        isequal(ex′, ex) && return ex
-        ex = ex′
-        n += 1
-    end
-    return ex
-end
-
-function _postwalk(T, ex, rs)
-    # what is our function?
-    # apply rs sequentially until a match
-    !iscall(ex) && return ex
-    postwalk(T, x -> __apply_rules(T, x, rs), ex)
-end
-
-
-
-function __apply_rules(T, x, rs)
-    for r ∈ rs
-        pat, rhs = r
-        σs = _eachmatch(pat, x)
-        isempty(σs) && continue
-        for σ ∈ σs
-            ex =  _rewrite(T, σ, rhs)
-            x′ = try
-                eval(ex)
-            catch err
-                x
-            end
-            !isequal(x, x′) && return x′
-            end
-    end
-    return x
-end
-
-simplify(T, ex) = __resolve(T, ex, simplify_rules)
-expand(T, ex)   = __resolve(T, ex, expand_rules)
-
-#=
-# SymEngine
-simplify(x::SymEngine.Basic) = MatchPy.simplify(SymEngine.Basic, x)
-#MatchPy._isnumber(x::SymEngine.Basic) = SymEngine.is_constant(x)
-
-# SimpleExpressions
-simplify(x::SimpleExpressions.AbstractSymbolic) = MatchPy.simplify(SimpleExpressions.AbstractSymbolic, x)
-#MatchPy._isnumber(x::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.is_number(x)
-=#

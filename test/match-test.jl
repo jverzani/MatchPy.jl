@@ -369,3 +369,18 @@ end
         @test _replace(ex, :(x*sin(x)) => :x, M) == :x
     end
 end
+
+@testset "simplify" begin
+    si(ex) = MatchPy.simplify(Expr, ex)
+
+    ss = (:(2x + 3x + 4),
+          :(sin(x)/cos(x)),
+          :(20*sin(x) * cos(x)),
+          :(10*sin(x^2)^2 + 10*cos(x^2)^2 + 10),
+          :(10*log(x)),
+          )
+
+    for ex ∈ ss
+        @test ex != si(ex)
+    end
+end

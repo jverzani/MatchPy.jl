@@ -2,20 +2,16 @@
 # Licensed under MIT with Copyright (c) 2022 Harald Hofstätter, Mattia Micheletta Merlin, Chris Rackauckas, and other contributors
 
 
-
-
-# TODO matches does assignment or mutation? which is faster?
 # TODO ~a*(~b*~c) currently will not match a*b*c . a fix is possible
-# TODO rules with symbols like ~b * a currently cause error
 
 # for when the rule contains a symbol, like ℯ, or a literal number
 function check_expr_r(data, rule::Real, σs)
-    isequal(rule, _unwrap_const(data)) && return σs
+    eq_expr(rule, data) && return σs
     return MatchDict[]
 end
 
 function check_expr_r(data, rule::Symbol, σs)
-        isequal(rule, Symbol(data)) && return σs
+    eq_expr(data, rule) && return σs
     return MatchDict[]
 end
 
@@ -25,8 +21,8 @@ function check_expr_r(data, rule::Expr, σs)
     if !iscall(rule)
         #@show :what_is, rule
     end
-    opᵣ = operation(rule)
 
+    opᵣ = operation(rule)
 
     if is_𝑋(opᵣ)
         # peel off hope for single argument!

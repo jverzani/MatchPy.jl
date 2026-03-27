@@ -12,7 +12,7 @@ function rule2(rule::Pair{Expr, Expr}, expr)
 
     rule.second==:(~~) && return m # useful for debug
 
-    r = MatchPy.rewrite(m, rule.second)
+    r = MatchPy._rewrite(m, rule.second)
 end
 
 @testset "General" begin
