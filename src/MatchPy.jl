@@ -24,7 +24,7 @@ A predicate is a function, which can be evaluated in the scope of this package, 
 
 A default slot variable has default values for the enclosing operations of `+` (0), `*` (1),  and `^` (the exponent, also 1).
 
-Matching is against arguments in a function. Functions may be associative and/or commutative. The `MP` algorith allows the separation (as happens with matrix multiplication), the `R2` algorithm does not.
+Matching is against arguments in a function. Functions may be associative and/or commutative. The `MP` algorithm allows the separation (as happens with matrix multiplication), the `R2` algorithm does not.
 
 The pattern `f(a, ~x, c)` would match `f(a,b,c)` (with `:x => b`) but not match `f(a,b₁, b₂, c)`. Whereas `f(a, ~~x, c)` would match with `:x => [b₁, b₂]`.
 
