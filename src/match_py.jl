@@ -159,6 +159,7 @@ end
 
 
 function clear_defslots(ss, p, fₐ, θ)
+    #@show :cf, ss, p
     inds = findall(has_defslot, arguments(p))
     opₚ = operation(p)
     ps = arguments(p)
@@ -168,7 +169,7 @@ function clear_defslots(ss, p, fₐ, θ)
         # we use default for inds′, nondefault for others
         ps′ = copy(ps)
         σ′ = match_dict()
-        for j ∈ inds′
+        for j ∈ reverse(sort(inds′)) # to avoid deletion in ps′
             i′ = inds[j]
             pᵢ = ps[i′]
             # p is ~!x or (a)^(~!x)
@@ -203,8 +204,8 @@ function clear_defslots(ss, p, fₐ, θ)
         θ′ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
         itr = match_one_to_one(ss, p′, fₐ, θ′)
         (isempty(itr) || isnothing(itr)) && continue
-        #@show inds′, collect(itr)
-        isempty(inds′) && return itr # defslot not needed
+        length(inds′) < length(inds) && return itr # avoid all defslots?
+        #isempty(inds′) && return itr # defslot not needed
         θ′′ = union(θ′′, itr)
     end
 
@@ -319,12 +320,17 @@ end
 
 # return trimmed ss, ps or nothing
 function _match_constant_patterns(ss, ps)
-    # @show :mcp, ss, ps
+    #@show :mcp, ss, ps
     Pconst = filter(!has_𝑋, ps)
     ss′ = ss
     for p ∈ Pconst
-        p in ss′ || return nothing
-        ss′ = filter(!=(p), ss′)
+        if isa(p, Symbol)
+            p in Symbol.(ss′) || return nothing
+            ss′ = filter(s -> !=(Symbol(s), p), ss′)
+        else
+            p in ss′ || return nothing
+            ss′ = filter(!=(p), ss′)
+        end
     end
     ps′ = filter(p -> p ∉ Pconst, ps)
     return (ss′, ps′)
@@ -351,7 +357,7 @@ function _match_defslot_patterns(ss, ps, fₐ=nothing, σ=match_dict())
         ps′ = copy(ps)
 
         # use default here; trim ps′, set σ′
-        for j ∈ inds′
+        for j ∈ reverse(sort(inds′))
             i′ = inds[j]
             pᵢ = ps[i′]
             if is_defslot(pᵢ)

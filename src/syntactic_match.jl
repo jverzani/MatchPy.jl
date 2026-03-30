@@ -69,13 +69,14 @@ end
 # copy of  CallableExpressions.expression_map_matched(pred, mapping, u)
 # if argument, `a`, matches via `is_match` replace with `f(a)`
 function map_matched(ex, is_match, f)
+    T = symtype(ex)
     if !iscall(ex)
         return is_match(ex) ? f(ex) : ex
     else
         is_match(ex) && return f(ex)
         iscall(ex) || return ex
         children = map_matched.(arguments(ex), is_match, f)
-        return sterm(typeof(first(children)), operation(ex), children)
+        return sterm(T, operation(ex), children)
     end
 end
 

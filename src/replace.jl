@@ -2,7 +2,6 @@
 abstract type MatchType end
 struct MP <: MatchType end
 struct R2 <: MatchType end
-struct R1 <: MatchType end
 
 ### ---- match, eachmatch, replace
 
@@ -17,7 +16,8 @@ end
 # return iterator of each possible match
 _eachmatch(pat::Expr, ex) = _eachmatch(pat, ex, MP())
 
-function _eachmatch(pat::Expr, ex, M::MP)
+
+function _eachmatch(pat::Union{Symbol,Expr}, ex, M::MP)
     if has_𝑋(pat)
         return match_one_to_one([ex], pat)
     else
@@ -28,10 +28,6 @@ end
 
 function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R2)
     check_expr_r(sub, pat, [MatchDict()])
-end
-
-function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R1)
-    MatchPy.Rule2.check_expr_r(sub, pat, MatchDict())
 end
 
 
@@ -55,7 +51,7 @@ _head(ex) = iscall(ex) ? operation(ex) : head(ex)
 
 
 # T is symbolic type (Expr, ...) passed to sterm in walk
-# rhs an expression
+# rhs an Expr, Number, Symbol
 function _rewrite(T, σ::MatchDict, rhs)
     postwalk(rhs, T) do rhs
         if is_𝑋(rhs)
@@ -66,40 +62,6 @@ function _rewrite(T, σ::MatchDict, rhs)
         end
     end
 end
-
-# replace variables in rhs with values looked upin σ
-# return an Expr (or Symbol or literal number)
-# From SymbolicIntegration.jl
-function _rewrite(σ::MatchDict, rhs::Expr)
-    if !iscall(rhs)
-        if isexpr(rhs)
-            args = [_rewrite(σ, a) for a ∈ children(rhs)]
-            return Expr(head(rhs), args...)
-        else
-            return rhs
-        end
-    end
-
-    if is_𝑋(rhs)
-        var = varname(rhs)
-        if haskey(σ, var)
-            return σ[var]
-        else
-            error("No match found for variable $(var)") #it should never happen
-        end
-    end
-
-    # otherwise call recursively on arguments and then reconstruct expression
-    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
-    return pterm(operation(rhs), args; elide=false)
-end
-
-_rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
-_rewrite(matches::MatchDict, rhs::Real, M=nothing) = rhs::Real
-_rewrite(matches::MatchDict, rhs::String, M=nothing) = rhs::String
-_rewrite(matches::MatchDict, rhs::LineNumberNode, M=nothing) = nothing::Nothing
-_rewrite(matches::MatchDict, rhs::QuoteNode, M=nothing) = rhs::QuoteNode
-
 
 
 """
@@ -226,7 +188,7 @@ The command wildcard expression `:(cos(x + ~x))` looks at the part of the tree t
 
 
 """
-function _replace(ex, uv::Pair, M::MatchType=R2())
+function _replace(ex, uv::Pair, M::MatchType=MP())
     u,v = uv
 
     # Expr
@@ -244,23 +206,60 @@ function _replace_arguments(ex::Expr, u, v, M::MatchType)
     __replace_arguments(ex, u, v, M)
 end
 function _replace_arguments(ex, u, v, M::MatchType)
-    __replace_arguments(ex, u, v, M) |> eval
+    __replace_arguments(ex, u, v, M) #|> eval
 end
 
 # return Expression
-function __replace_arguments(ex, u, v, M::MatchType)
+function __replace_arguments(ex, u, v, M::MatchType=MP())
+    T = symtype(ex)
+    __replace_arguments(T, ex, u, v, M)
+end
+
+function __replace_arguments(T, ex, u, v, M::MatchType=MP())
     iscall(ex) || return (ex == u ? v : ex)
-
     σ = _match(u, ex, M) # sigma is nothing, (), or a substitution
-
     if !isnothing(σ)
         σ == () && return v # no substitution
-        return _rewrite(σ, v)
+        return _rewrite(T, σ, v)
     end
 
     # peel off
-    op, args = Symbol(operation(ex)), arguments(ex)
+    op, args = operation(ex), arguments(ex)
     args′ = __replace_arguments.(args, (u,), (v,), (M,))
-    return pterm(op, args′)
+    return sterm(T, op, args′)
 
 end
+
+## ------
+# replace variables in rhs with values looked upin σ
+# return an Expr (or Symbol or literal number)
+# From SymbolicIntegration.jl
+function _rewrite(σ::MatchDict, rhs::Expr)
+    if !iscall(rhs)
+        if isexpr(rhs)
+            args = [_rewrite(σ, a) for a ∈ children(rhs)]
+            return Expr(head(rhs), args...)
+        else
+            return rhs
+        end
+    end
+
+    if is_𝑋(rhs)
+        var = varname(rhs)
+        if haskey(σ, var)
+            return σ[var]
+        else
+            error("No match found for variable $(var)") #it should never happen
+        end
+    end
+
+    # otherwise call recursively on arguments and then reconstruct expression
+    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
+    return pterm(operation(rhs), args; elide=false)
+end
+
+_rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
+_rewrite(matches::MatchDict, rhs::Real, M=nothing) = rhs::Real
+_rewrite(matches::MatchDict, rhs::String, M=nothing) = rhs::String
+_rewrite(matches::MatchDict, rhs::LineNumberNode, M=nothing) = nothing::Nothing
+_rewrite(matches::MatchDict, rhs::QuoteNode, M=nothing) = rhs::QuoteNode

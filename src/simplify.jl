@@ -15,8 +15,8 @@ MatchPy.unwrap_const(x::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.
 
 
 # simplify and expand
-simplify(T, ex) = __resolve(T, ex, simplify_rules)
-expand(T, ex)   = __resolve(T, ex, expand_rules)
+_simplify(ex, T=symtype(ex)) = __resolve(T, ex, simplify_rules)
+_expand(ex, T=symtype(ex))   = __resolve(T, ex, expand_rules)
 
 ## ------- rules to apply
 canonicalize = [
@@ -119,7 +119,9 @@ function __apply_rules(T, x, rs)
         σs = _eachmatch(pat, x)
         isempty(σs) && continue
         for σ ∈ σs
-            ex =  _rewrite(σ, rhs)
+            ex =  _rewrite(T, σ, rhs)
+            return ex
+            #=
             if T == Expr
                 !isequal(ex, rhs) && return ex
             else
@@ -130,6 +132,7 @@ function __apply_rules(T, x, rs)
                 end
                 !isequal(x, x′) && return x′
             end
+            =#
         end
     end
     return x

@@ -4,7 +4,7 @@ This package provides two matching algorithms.
 
 * An implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as `MatchPy`.
 
-* A slight modification of a matching algorithm developed in the `SymbolicIntegration` package in [rule2.jl](https://github.com/JuliaSymbolics/SymbolicIntegration.jl/blob/main/src/methods/rule_based/rule2.jl).
+* A modification of a matching algorithm developed in the `SymbolicIntegration` package in [rule2.jl](https://github.com/JuliaSymbolics/SymbolicIntegration.jl/blob/main/src/methods/rule_based/rule2.jl).
 
 These implementations only depend on the lightweight `TermInterface` package and the `Combinatorics` package.
 
@@ -26,10 +26,10 @@ The `MatchPy._rewrite` method replaces matches of a pattern in another expressio
 
 "Each" match
 
-```
+```@repl matchpy
 julia> using MatchPy
 
-julia> MatchPy._eachmatch(:(~x + ~y), :(a + b, MatchPy.R2()))
+julia> MatchPy._eachmatch(:(~x + ~y), :(a + b), MatchPy.R2())
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:y => :b, :x => :a)
  Base.ImmutableDict(:y => :a, :x => :b)
@@ -42,18 +42,25 @@ julia> MatchPy._eachmatch(:(~x + ~y), :(a + b), MatchPy.MP()) |> collect
 
 Single match
 
-```
+```@repl matchpy
 julia> MatchPy._match(:(~x + ~y), :(a + b), MatchPy.MP())
 Base.ImmutableDict{Symbol, Any} with 2 entries:
-  :x => :b
-  :y => :a
+  :x => :a
+  :y => :b
 ```
 
 Replace:
 
-```
+```@repl matchpy
 julia> MatchPy._replace(:(cos(2x)^2 + sin(2x)^2), :(sin(~x)^2 + cos(~x)^2) => 1)
 1
+```
+
+The `_simplify` function builds on the above to perform some common simplifications:
+
+```@repl matchpy
+julia> MatchPy._simplify(:(cos(2x)^2 + sin(2x)^2))
+:(1 + 0)
 ```
 
 ## Wildcards
@@ -82,17 +89,17 @@ julia> MatchPy._replace(:(2cos(2x)^2 + 2sin(2x)^2), :(~!a * sin(~x)^2 + ~!a * co
 2
 
 julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x))) |> collect
-2-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => :x, :b => 2)
- Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => 2, :b => :x)
+2-element Vector{Any}:
+ Base.ImmutableDict{Symbol, Any}(:x => 2, :b => :x, :c => 0, :m => 1, :a => 1)
+ Base.ImmutableDict{Symbol, Any}(:x => :x, :b => 2, :c => 0, :m => 1, :a => 1)
 ```
 
 * Use of a predicate function to filter matches
 
 ```
 julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x::(u -> !isa(u,Number)) + ~!c)^(~!m)), :(sin(2x))) |> collect
-1-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:a => 1, :m => 1, :c => 0, :x => :x, :b => 2)
+1-element Vector{Any}:
+ Base.ImmutableDict{Symbol, Any}(:x => :x, :b => 2, :c => 0, :m => 1, :a => 1)
 ```
 
 * Use of a segment variable
@@ -100,9 +107,9 @@ julia> MatchPy._eachmatch(:(~!a * sin(~!b *~x::(u -> !isa(u,Number)) + ~!c)^(~!m
 ```
 julia> MatchPy._eachmatch(:(~x + ~~y), :(a + b), MatchPy.MP()) |> collect
 3-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :(a + b), :y => Any[])
- Base.ImmutableDict(:x => :b, :y => Any[:a])
  Base.ImmutableDict(:x => :a, :y => Any[:b])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :(a + b), :y => Any[])
 ```
 
 Notice that `+` is associative, so the slot variable `~x` may match one or more arguments. In the case there is more than one, the function is called on them. This is why the first match has `:x => :(a+b)`. A match for a segment should always return a container.
@@ -111,8 +118,8 @@ Notice that `+` is associative, so the slot variable `~x` may match one or more 
 ```
 julia> MatchPy._eachmatch(:(~x + ~~~y), :(a + b), MatchPy.MP()) |> collect
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :b, :y => :a)
- Base.ImmutableDict(:x => :a, :y => :b)
+ Base.ImmutableDict(:x => :a, :y => Any[:b])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
 ```
 
 Compare to:
@@ -120,14 +127,14 @@ Compare to:
 ```
 julia> MatchPy._eachmatch(:(~x + ~~y::(u->length(u) >= 1)), :(a + b), MatchPy.MP()) |> collect
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :b, :y => Any[:a])
  Base.ImmutableDict(:x => :a, :y => Any[:b])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
 
 julia> MatchPy._eachmatch(:(~x + ~~y), :(a + b), MatchPy.MP()) |> collect
 3-element Vector{Base.ImmutableDict{Symbol, Any}}:
- Base.ImmutableDict(:x => :(a + b), :y => Any[])
- Base.ImmutableDict(:x => :b, :y => Any[:a])
  Base.ImmutableDict(:x => :a, :y => Any[:b])
+ Base.ImmutableDict(:x => :b, :y => Any[:a])
+ Base.ImmutableDict(:x => :(a + b), :y => Any[])
 ```
 
 

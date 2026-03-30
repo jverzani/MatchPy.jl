@@ -1,7 +1,7 @@
 using Test
 using MatchPy
 using MatchPy: _eachmatch, _replace, _match
-MP, R2, R1 = MatchPy.MP, MatchPy.R2, MatchPy.R1
+MP, R2 = MatchPy.MP, MatchPy.R2
 using TermInterface
 
 function MatchPy.isassociative(x::Symbol)
@@ -182,6 +182,9 @@ end
         (pat = :((~x)^(~!m) * (~x)^(~!n)),
          sub = :(x^2 * x^3),
          len = 2),
+        (pat = :(~!a * sin(~!b *~x + ~!c)^(~!m)),
+         sub = :(sin(2x)),
+         len = 2),
 
     ]
 
@@ -193,12 +196,6 @@ end
         @test length(u) == len
         @test length(γs) ≤ length(u)
         #length(γs) < length(u) && (@show pat, sub, :different)
-        σ = MatchPy.Rule2.check_expr_r(sub, pat, MatchPy.Rule2.MatchDict())
-        if iszero(len)
-            #@show i, σ ==  MatchPy.Rule2.FAIL_DICT
-        else
-            #@show i, σ !=  MatchPy.Rule2.FAIL_DICT
-        end
     end
 end
 
@@ -260,19 +257,10 @@ end
 
     ]
 
-
-
-
     for (pat, sub, len) ∈ ts
         for M ∈ (MP(), R2())
             σs = MatchPy._eachmatch(pat, sub, M)
             @test length(collect(σs)) == len
-        end
-        σ = MatchPy.Rule2.check_expr_r(sub, pat, MatchPy.Rule2.MatchDict())
-        if len == 0
-            #@show σ == MatchPy.Rule2.FAIL_DICT
-        else
-            #@show σ != MatchPy.Rule2.FAIL_DICT
         end
     end
 
@@ -292,9 +280,6 @@ end
         @test length(collect(σs)) == len
     end
 end
-
-
-
 
 @testset "replace head" begin
     # replace operation
@@ -371,7 +356,7 @@ end
 end
 
 @testset "simplify" begin
-    si(ex) = MatchPy.simplify(Expr, ex)
+    si(ex) = MatchPy._simplify(ex, Expr)
 
     ss = (:(2x + 3x + 4),
           :(sin(x)/cos(x)),

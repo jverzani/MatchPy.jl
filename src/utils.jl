@@ -154,6 +154,8 @@ symtype(::T) where T = T
 
 function sterm(op, args)
     S = symtype(first(args))
+    sterm(S, op, args)
+    #=
     _isexpr = S == Expr
     if _isexpr
         !isa(op, Symbol) && (op = nameof(op))
@@ -161,6 +163,7 @@ function sterm(op, args)
         isa(op, Symbol) && (op = eval(op))
     end
     _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+    =#
 end
 
 
@@ -169,7 +172,15 @@ function sterm(S, op, args)
     if _isexpr
         !isa(op, Symbol) && (op = nameof(op))
     else
-        isa(op, Symbol) && (op = eval(op))
+        if isa(op, Symbol)
+            for M ∈ (@__MODULE__, Main, Base)
+                if isdefined(M, op)
+                    op = M.eval(op)
+                    break
+                end
+            end
+            isa(op, Symbol) && (op = eval(op))
+        end
     end
     _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
 end
@@ -293,7 +304,7 @@ const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
 # return symbol holding variable name
 varname(x::Symbol) = x
 function varname(x::Expr)
-    iscall(x) && !(x.args[1] ∈ (:~, :!)) && throw(ArgumentError("not a wild card variable"))
+    iscall(x) && !(x.args[1] ∈ (:~, :!)) && throw(ArgumentError("$x is not a wild card variable"))
     if x.args[1] ∈ (:~, :!)
         varname(x.args[2])
     else

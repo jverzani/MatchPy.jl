@@ -2,7 +2,7 @@
 using Test
 using Random
 using MatchPy
-MP, R2, R1 = MatchPy.MP, MatchPy.R2, MatchPy.R1
+MP, R2 = MatchPy.MP, MatchPy.R2
 
 function rule2(rule::Pair{Expr, Expr}, expr)
     σ = MatchPy.match_dict()
