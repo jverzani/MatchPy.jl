@@ -1,7 +1,6 @@
 using Test
 using MatchPy
 using MatchPy: _eachmatch, _replace, _match
-MP, R2 = MatchPy.MP, MatchPy.R2
 using TermInterface
 
 function MatchPy.isassociative(x::Symbol)
@@ -189,55 +188,36 @@ end
     ]
 
     for (i,(;pat, sub, len)) ∈ enumerate(ts)
-        σs = _eachmatch(pat, sub, MP())
-        γs = _eachmatch(pat, sub, R2())
+        σs = _eachmatch(pat, sub)
         u = collect(σs)
-        length(u) != len && @show i
         @test length(u) == len
-        @test length(γs) ≤ length(u)
-        #length(γs) < length(u) && (@show pat, sub, :different)
     end
 end
 
-@testset "eachmatch differences" begin
-
-    for (pat, sub) ∈ [
-        (:(~x + ~y), :(a + b + c)),    # R2 has no match (associativity)
-        (:(~x + ~(~y)), :(a + b + c)), # R2 doesn't have associativity for ~x
-        (:(~~x + ~~y), :(a + b + c)),  # R2 puts all matches into first segment
-    ]
-        σs = collect(_eachmatch(pat, sub, MP()))
-        γs = _eachmatch(pat, sub, R2())
-
-        @test length(γs) < length(σs)
-    end
-end
 
 @testset "match" begin
-    for M ∈ (MP(), R2())
-        # match 1
-        pat = :((~x)^(~x))
-        sub = :((x+p)^(x+p))
-        σ = _match(pat, sub,M)
-        @test σ[:x] == :(x + p)
+    # match 1
+    pat = :((~x)^(~x))
+    sub = :((x+p)^(x+p))
+    σ = _match(pat, sub)
+    @test σ[:x] == :(x + p)
 
-        # _match 2 wildcards
-        pat = :((~x)*sin((~y)))
-        sub = :(x*sin(x))
-        σ = _match(pat, sub, M)
-        @test σ[:y] == :x && σ[:x] == :x && length(σ) == 2
+    # _match 2 wildcards
+    pat = :((~x)*sin((~y)))
+    sub = :(x*sin(x))
+    σ = _match(pat, sub)
+    @test σ[:y] == :x && σ[:x] == :x && length(σ) == 2
 
-        # _match can have more than 1 substitution
-        pat = :(f((~~x),(~~y)))
-        sub = :(f(a,b,c))
-        σ = _match(pat, sub, M)
-        @test Set(vcat(collect.(values(σ))...)) == Set([:a,:b,:c])
+    # _match can have more than 1 substitution
+    pat = :(f((~~x),(~~y)))
+    sub = :(f(a,b,c))
+    σ = _match(pat, sub)
+    @test Set(vcat(collect.(values(σ))...)) == Set([:a,:b,:c])
 
-        # empty _match returns `nothing`
-        pat = :(sin(~x))
-        sub = :(sin(x)^2)
-        @test isnothing(_match(pat, sub, M))
-    end
+    # empty _match returns `nothing`
+    pat = :(sin(~x))
+    sub = :(sin(x)^2)
+    @test isnothing(_match(pat, sub))
 
 end
 
@@ -255,18 +235,6 @@ end
          sub = 3,
          len = 0),
 
-    ]
-
-    for (pat, sub, len) ∈ ts
-        for M ∈ (MP(), R2())
-            σs = MatchPy._eachmatch(pat, sub, M)
-            @test length(collect(σs)) == len
-        end
-    end
-
-    # MP treats ~~x differently
-    ts′ = [
-
         (pat = :(+(~~x::(u->iseven(length(u))))),
          sub = :(a + b + c),
          len = 0),
@@ -275,10 +243,12 @@ end
          len = 1),
 
     ]
-    for (pat, sub, len) ∈ ts′
-        σs = MatchPy._eachmatch(pat, sub, MP())
+
+    for (pat, sub, len) ∈ ts
+        σs = MatchPy._eachmatch(pat, sub)
         @test length(collect(σs)) == len
     end
+
 end
 
 @testset "replace head" begin
@@ -289,70 +259,63 @@ end
 
     ex = :(f(a,a,b))
     rule = :(f(~~x)) => :(g(~~x))
-    for M ∈ (MP(), R2())
-        u = _replace(ex, rule, M)
-        @test operation(u) == :g # :(g(Any[:a, :a, :b]))
-    end
+    u = _replace(ex, rule)
+    @test operation(u) == :g # :(g(Any[:a, :a, :b]))
 end
 
 @testset "replace" begin
 
-    for M ∈ (MP(), R2())
-
-        # replace parts
-        ex = :(log(1 + x^2) + log(1 + x^3))
-        rule = :(log(1+(~x))) => :(log1p(~x))
-        u = _replace(ex, rule, M)
-        @test u == :(log1p(x^2) + log1p(x^3))
+    # replace parts
+    ex = :(log(1 + x^2) + log(1 + x^3))
+    rule = :(log(1+(~x))) => :(log1p(~x))
+    u = _replace(ex, rule)
+    @test u == :(log1p(x^2) + log1p(x^3))
 
     #@test _replace(ex, :(log(1+(~~~x))) => :(log1p((~~~x)))) == log1p(x ^ 2) + log1p(x ^ 3)
 
-        ex = :(log(sin(x)) + tan(sin(x^2)))
-        rule = sin => cos
-        @test _replace(ex, rule, M) == :(log(cos(x)) + tan(cos(x ^ 2)))
+    ex = :(log(sin(x)) + tan(sin(x^2)))
+    rule = sin => cos
+    @test _replace(ex, rule) == :(log(cos(x)) + tan(cos(x ^ 2)))
 
-        rule = :(sin(~x))=> :(tan(~x))
-        @test _replace(ex, rule, M) == :(log(tan(x)) + tan(tan(x^2)))
+    rule = :(sin(~x))=> :(tan(~x))
+    @test _replace(ex, rule) == :(log(tan(x)) + tan(tan(x^2)))
 
-        rule = :(sin(~x)) => :(tan((~x)/2))
-        @test _replace(ex, rule, M) == :(log(tan(x/2)) + tan(tan(x^2/2)))
+    rule = :(sin(~x)) => :(tan((~x)/2))
+    @test _replace(ex, rule) == :(log(tan(x/2)) + tan(tan(x^2/2)))
 
-        rule = :(sin(~x)) => :(~x)
-        @test _replace(ex, rule, M) == :(log(x) + tan(x^2))
+    rule = :(sin(~x)) => :(~x)
+    @test _replace(ex, rule) == :(log(x) + tan(x^2))
 
-        ex = :((1 + x^2)^2) # outer one is peeled off first by _replace
-        rule = :((~x)^2) => :((~x)^4)
-        @test _replace(ex, rule, M) == :((1 + (x ^ 2)) ^ 4)
-        @test foldl(_replace, (rule, rule); init=ex) == :((1 + (x ^ 4)) ^ 4)
+    ex = :((1 + x^2)^2) # outer one is peeled off first by _replace
+    rule = :((~x)^2) => :((~x)^4)
+    @test _replace(ex, rule) == :((1 + (x ^ 2)) ^ 4)
+    @test foldl(_replace, (rule, rule); init=ex) == :((1 + (x ^ 4)) ^ 4)
 
 
-        ex = :(sin(x + x*log(x) + cos(p + x + p + x^2)))
-        rule = :(cos(x + (~~x))) => :(x__)
-        @test _replace(ex, rule, M) == :(sin(x + x * log(x) + x__))
+    ex = :(sin(x + x*log(x) + cos(p + x + p + x^2)))
+    rule = :(cos(x + (~~x))) => :(x__)
+    @test _replace(ex, rule) == :(sin(x + x * log(x) + x__))
 
-        @test _replace(:x, :p=>2, M) == :x
-        @test _replace(:(1 + x^2), :(x^2) => 2, M) == :(1 + 2)  # 1 + 2 evaluates to 3
-        # (~x) matches different parts of expression tree in _replace
-        ex = :(sin(cos(a))*cos(b))
-        rule = :(cos((~x))) => :(tan((~x)))
-        @test _replace(ex, rule, M) == :(sin(tan(a)) * tan(b))
+    @test _replace(:x, :p=>2) == :x
+    @test _replace(:(1 + x^2), :(x^2) => 2) == :(1 + 2)  # 1 + 2 evaluates to 3
+    # (~x) matches different parts of expression tree in _replace
+    ex = :(sin(cos(a))*cos(b))
+    rule = :(cos((~x))) => :(tan((~x)))
+    @test _replace(ex, rule) == :(sin(tan(a)) * tan(b))
 
-        # no variable in substitution
-        @test _replace(:(sin(a)), :(sin((~x))) => :x, M) == :x
-        @test _replace(:(sin(a)), :(sin((~x))) => :(~x), M) == :a
-        @test _replace(:(sin(a)), :(sin((~x))) => 2, M) == 2
-    end
+    # no variable in substitution
+    @test _replace(:(sin(a)), :(sin((~x))) => :x) == :x
+    @test _replace(:(sin(a)), :(sin((~x))) => :(~x)) == :a
+    @test _replace(:(sin(a)), :(sin((~x))) => 2) == 2
 end
 
 @testset "replace exact" begin
-    for M ∈ (MP(), R2())
-        # no wild card
-        ex = :(x^2 + x^4)
-        @test _replace(ex, :(x^2) => :x, M) == :(x + x^4)
+    # no wild card
+    ex = :(x^2 + x^4)
+    @test _replace(ex, :(x^2) => :x) == :(x + x^4)
 
-        ex = :(x * sin(x))
-        @test _replace(ex, :(x*sin(x)) => :x, M) == :x
-    end
+    ex = :(x * sin(x))
+    @test _replace(ex, :(x*sin(x)) => :x) == :x
 end
 
 @testset "simplify" begin
