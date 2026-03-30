@@ -43,10 +43,11 @@ julia> MatchPy._eachmatch(:(~x + ~y), :(a + b), MatchPy.MP()) |> collect
 Single match
 
 ```@repl matchpy
-julia> MatchPy._match(:(~x + ~y), :(a + b), MatchPy.MP())
+julia>  MatchPy._match(:(~x + ~y), :(a + b), MatchPy.MP())
 Base.ImmutableDict{Symbol, Any} with 2 entries:
   :x => :a
   :y => :b
+
 ```
 
 Replace:
