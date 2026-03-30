@@ -1,12 +1,8 @@
 # For dispatch
-abstract type MatchType end
-struct MP <: MatchType end
-struct R2 <: MatchType end
-
 ### ---- match, eachmatch, replace
 
-function _match(pat::Union{Symbol, Expr}, sub, M::MatchType=MP())
-    σs = _eachmatch(pat, sub, M)
+function _match(pat::Union{Symbol, Expr}, sub)
+    σs = _eachmatch(pat, sub)
     σ = iterate(σs)
     isnothing(σ) && return nothing
     first(σ)
@@ -14,20 +10,13 @@ end
 
 
 # return iterator of each possible match
-_eachmatch(pat::Expr, ex) = _eachmatch(pat, ex, MP())
-
-
-function _eachmatch(pat::Union{Symbol,Expr}, ex, M::MP)
+function _eachmatch(pat::Union{Symbol,Expr}, ex)
     if has_𝑋(pat)
         return match_one_to_one([ex], pat)
     else
         σ = syntactic_match(ex, pat)
         return isnothing(σ) ? () : (σ,)
     end
-end
-
-function _eachmatch(pat::Union{Symbol, Expr}, sub, M::R2)
-    check_expr_r(sub, pat, [MatchDict()])
 end
 
 
@@ -188,11 +177,11 @@ The command wildcard expression `:(cos(x + ~x))` looks at the part of the tree t
 
 
 """
-function _replace(ex, uv::Pair, M::MatchType=MP())
+function _replace(ex, uv::Pair)
     u,v = uv
 
     # Expr
-    isa(u, Expr) && return _replace_arguments(ex, u, v, M)
+    isa(u, Expr) && return _replace_arguments(ex, u, v)
 
     # is u function replace head
     isa(u, Function) && return map_matched_head(ex, ==(Symbol(u)), _ -> v)
@@ -202,22 +191,22 @@ function _replace(ex, uv::Pair, M::MatchType=MP())
 end
 
 
-function _replace_arguments(ex::Expr, u, v, M::MatchType)
-    __replace_arguments(ex, u, v, M)
+function _replace_arguments(ex::Expr, u, v)
+    __replace_arguments(ex, u, v)
 end
-function _replace_arguments(ex, u, v, M::MatchType)
-    __replace_arguments(ex, u, v, M) #|> eval
+function _replace_arguments(ex, u, v)
+    __replace_arguments(ex, u, v) #|> eval
 end
 
 # return Expression
-function __replace_arguments(ex, u, v, M::MatchType=MP())
+function __replace_arguments(ex, u, v)
     T = symtype(ex)
-    __replace_arguments(T, ex, u, v, M)
+    __replace_arguments(T, ex, u, v)
 end
 
-function __replace_arguments(T, ex, u, v, M::MatchType=MP())
+function __replace_arguments(T, ex, u, v)
     iscall(ex) || return (ex == u ? v : ex)
-    σ = _match(u, ex, M) # sigma is nothing, (), or a substitution
+    σ = _match(u, ex) # sigma is nothing, (), or a substitution
     if !isnothing(σ)
         σ == () && return v # no substitution
         return _rewrite(T, σ, v)
@@ -225,7 +214,7 @@ function __replace_arguments(T, ex, u, v, M::MatchType=MP())
 
     # peel off
     op, args = operation(ex), arguments(ex)
-    args′ = __replace_arguments.(args, (u,), (v,), (M,))
+    args′ = __replace_arguments.(args, (u,), (v,))
     return sterm(T, op, args′)
 
 end
@@ -258,8 +247,8 @@ function _rewrite(σ::MatchDict, rhs::Expr)
     return pterm(operation(rhs), args; elide=false)
 end
 
-_rewrite(matches::MatchDict, rhs::Symbol, M=nothing) = rhs::Symbol
-_rewrite(matches::MatchDict, rhs::Real, M=nothing) = rhs::Real
-_rewrite(matches::MatchDict, rhs::String, M=nothing) = rhs::String
-_rewrite(matches::MatchDict, rhs::LineNumberNode, M=nothing) = nothing::Nothing
-_rewrite(matches::MatchDict, rhs::QuoteNode, M=nothing) = rhs::QuoteNode
+_rewrite(matches::MatchDict, rhs::Symbol) = rhs::Symbol
+_rewrite(matches::MatchDict, rhs::Real) = rhs::Real
+_rewrite(matches::MatchDict, rhs::String) = rhs::String
+_rewrite(matches::MatchDict, rhs::LineNumberNode) = nothing::Nothing
+_rewrite(matches::MatchDict, rhs::QuoteNode) = rhs::QuoteNode
