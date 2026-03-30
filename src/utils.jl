@@ -1,32 +1,29 @@
 # utils for matching
 
-# These may need extensions to use with other packages
+# These may need extensions to use with other packages; eg cf replace.jl
+
+# if x is a wrapped constant number, unwrap it. Otherwise return x
+unwrap_const(x::Any) = _unwrap_const(x)
+
+
+# cases for expression types
 _unwrap_const(x) = x
 _unwrap_const(x::Number) = x
-_unwrap_const(x::Symbol) = x
-_unwrap_const(x::Expr) = __isnumber(x) ?  eval(x) : x
-__isnumber(x::Number) = true
-__isnumber(x::Symbol) = x ∈ (:π, :ℯ, :φ, :γ)
-__isnumber(x::Expr) = !(_ismatch(x, !__isnumber))
-
-# to pass to maketerm (sterm)
-symtype(::Real) = Expr
-symtype(::Symbol) = Expr
-symtype(::Expr) = Expr
-symtpye(::T) where T = T
-
-# to evaluate a guard. (Where is the question?)
-function _evalguard(pred, data)
-    try
-        Base.invokelatest(eval(pred), _unwrap_const(data))
-    catch err
-        try
-            return invokelatest(Main.eval(pred), _unwrap_const(data))
-        catch err
-            false
-        end
-    end
+function _unwrap_const(x::Symbol)
+    x ∈ (:π, :pi) && return MathConstants.pi
+    x ∈ (:ℯ, :e, ) && return MathConstants.ℯ
+    x ∈ (:φ, :golden) && return MathConstants.golden
+    x ∈ (:γ, :eulergamma) && return MathConstants.eulergamma
+    x == :catalan && return MathConstants.catalan
+    return x
 end
+_unwrap_const(x::Expr) = _isnumber(x) ? eval(x) : x
+
+# check if value holds a number
+_isnumber(::Any) = false
+_isnumber(x::Number) = true
+_isnumber(x::Symbol) = x ∈ (:π, :pi, :ℯ, :e, :φ, :golden, :γ, :eulergamma, :catalan)
+_isnumber(x::Expr) = !(_ismatch(x, !_isnumber))
 
 ## ----- substitution mapping stored in a dictionary -----
 # A substitution is a collection of pairs 𝑋 -> 𝐺
@@ -46,7 +43,7 @@ function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
         v = isa(v,Number) ? _unwrap_const(v) : v
         if haskey(σ, k)
-            σ[k] != v && return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
+            σ[k] != v && error("repeated key with different value: $k => $v ($(σ[k]))")#return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
         else
             σ = MatchDict(σ, k, v)
         end
@@ -56,10 +53,11 @@ end
 
 #  σ △ σ′ (\bigtriangleup) for every x in the intersection of the domains has same value
 function iscompatible(σ::MatchDict, σ′::MatchDict)
+    (σ == FAIL_DICT || σ′ == FAIL_DICT) && return false
     isempty(σ) && return true
     isempty(σ′) && return true
     for k in keys(σ)
-        if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
+            if haskey(σ′, k) # intersect(keys(σ), keys(σ′)) allocates
             isequal(σ[k], σ′[k]) || return false
         end
     end
@@ -76,8 +74,12 @@ function merge_match(σ::MatchDict, σ′::MatchDict)
 end
 merge_match(σ::Tuple, σ′::MatchDict) = σ′
 
-function union_merge(θ, σ′)
+function union_merge(θ, σ′::MatchDict)
     (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+end
+
+function union_merge(θ, θ′)
+    (merge_match(σ, σ′) for σ ∈ θ for σ′ ∈ θ′ if iscompatible(σ, σ′))
 end
 
 ## utils
@@ -85,15 +87,49 @@ _isone(x) = isequal(x, 1)
 _groupby(pred, t) = (t = filter(pred,t), f=filter(!pred, t))
 
 
+# to evaluate a guard. (Where is the question?)
+function _evalguard(pred, data)
+    try
+        Base.invokelatest(eval(pred), _unwrap_const(data))
+    catch err
+        try
+            return invokelatest(Main.eval(pred), _unwrap_const(data))
+        catch err
+            false
+        end
+    end
+end
 
 ## Expression related methods
 _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
 
 # need to compare x and p when p is from an expression
 # trick -- SymEngine.Basic <: Number
-eq_expr(a, p::Number) = isequal(a,p)
-eq_expr(a::Number, p::Symbol) = false
-eq_expr(a, p::Symbol) = isequal(Symbol(a),p)
+# compare Number, Expr, Irrational, Symbol
+
+eq_expr(a::Any, b::Any) = isequal(unwrap_const(a), unwrap_const(b))
+eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(unwrap_const(a), unwrap_const(b)))
+#=
+# symbol
+#eq_expr(a::Union{Expr, Number}, b::Symbol) = false
+#eq_expr(a::Symbol, b::Union{Expr, Number}) = false
+#eq_expr(a::Irrational, b::Symbol) = isequal(Symbol(a), b)
+#eq_expr(a::Symbol, b::Irrational) = isequal(a, Symbol(b))
+#eq_expr(b::Symbol, a::Number) = false
+eq_expr(a::Expr, b::Number) = eq_expr(b,a)
+
+function eq_expr(a::Number, b::Expr)
+    b′ = unwrap_const(b)
+    isa(b′, Number) && return issequal(a,b′)
+    return false
+    #=
+    is_operation(://)(b) || return false
+    a1,a2 = numerator(a), denominator(a)
+    _, b1,b2 = b.args
+    eq_expr(a1, b1) && eq_expr(a2, b2)
+    =#
+end
+=#
 
 
 # create a term for a pattern (pterm) or a subject (sterm)
@@ -110,8 +146,16 @@ end
 
 # symbolic type
 
+# to pass to maketerm (sterm)
+symtype(::Real) = Expr
+symtype(::Symbol) = Expr
+symtype(::Expr) = Expr
+symtype(::T) where T = T
+
 function sterm(op, args)
     S = symtype(first(args))
+    sterm(S, op, args)
+    #=
     _isexpr = S == Expr
     if _isexpr
         !isa(op, Symbol) && (op = nameof(op))
@@ -119,7 +163,28 @@ function sterm(op, args)
         isa(op, Symbol) && (op = eval(op))
     end
     _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+    =#
 end
+
+
+function sterm(S, op, args)
+    _isexpr = S == Expr
+    if _isexpr
+        !isa(op, Symbol) && (op = nameof(op))
+    else
+        if isa(op, Symbol)
+            for M ∈ (@__MODULE__, Main, Base)
+                if isdefined(M, op)
+                    op = M.eval(op)
+                    break
+                end
+            end
+            isa(op, Symbol) && (op = eval(op))
+        end
+    end
+    _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+end
+
 
 # invert an expr to regularize a/b --> a*b^{-1}
 function _invert_expr(pat)
@@ -133,6 +198,10 @@ function _invert_expr(pat)
         return pterm(:^, (pat, -1))
     end
 end
+
+# --- basic total order, can override for other types
+<ₑ(x::Symbol, y::Symbol) = x < y
+<ₑ(x::Any, y::Any) = <ₑ(Symbol(x), Symbol(y))
 
 
 # ----- predicates
@@ -158,11 +227,9 @@ is_segment(x::Any) = false
 is_plus(x::Any) = false
 is_op(x::Any) = false
 
-const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
-
 # Expr
 is_𝑋(x::Expr) = (iscall(x) && first(x.args) === :(~))  ||
-    (isexpr(x) && is_𝑋(first(x.args)))
+    (isexpr(x) && head(x) != :... && is_𝑋(first(x.args)))
 
 function has_𝑋(x::Expr)
     is_𝑋(x) && return true
@@ -186,6 +253,12 @@ function is_defslot(x::Expr)
 
 
     return false
+end
+
+has_defslot(::Any) = false
+function has_defslot(x::Expr)
+    return is_defslot(x) ||
+        (is_operation(:^)(x) && is_defslot(last(arguments(x))))
 end
 
 is_slot_or_defslot(x) = is_slot(x) || is_defslot(x)
@@ -215,16 +288,6 @@ function is_op(x::Expr)
     is_𝑋(x) && iscall(x) && is_𝑋(operation(x))
 end
 
-# return symbol holding variable name
-varname(x::Symbol) = x
-function varname(x::Expr)
-    if x.args[1] ∈ (:~, :!)
-        varname(x.args[2])
-    else
-        varname(x.args[1])
-    end
-end
-
 # Does wildcard have a predicate?
 has_predicate(x::Symbol)::Bool = false
 function has_predicate(x::Expr)::Bool
@@ -232,6 +295,20 @@ function has_predicate(x::Expr)::Bool
         has_predicate(x.args[2])
     else
         length(x.args) == 2 && x.head==:(::)
+    end
+end
+
+## ------
+const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
+
+# return symbol holding variable name
+varname(x::Symbol) = x
+function varname(x::Expr)
+    iscall(x) && !(x.args[1] ∈ (:~, :!)) && throw(ArgumentError("$x is not a wild card variable"))
+    if x.args[1] ∈ (:~, :!)
+        varname(x.args[2])
+    else
+        varname(x.args[1])
     end
 end
 
@@ -245,8 +322,6 @@ function get_predicate(x::Expr)
     end
 end
 
-# return wildcard matches
-
 # RENAME?
 #_free_symbols(::Any) = Expr[]
 #function _free_symbols(x::Expr)
@@ -254,57 +329,3 @@ end
 #    iscall(x) || return Expr[]
 #    unique(vcat(_free_symbols.(arguments(x))...))
 #end
-
-
-
-
-## Matching
-# copy of  CallableExpressions.expression_map_matched(pred, mapping, u)
-# if argument, `a`, matches via `is_match` replace with `f(a)`
-function map_matched(ex, is_match, f)
-    if !iscall(ex)
-        return is_match(ex) ? f(ex) : ex
-    else
-        is_match(ex) && return f(ex)
-        iscall(ex) || return ex
-        children = map_matched.(arguments(ex), is_match, f)
-        return sterm(typeof(first(children)), operation(ex), children)
-    end
-end
-
-
-# does predicate match an argument in the expression
-function _ismatch(ex, pred)
-    if iscall(ex)
-        return any(Base.Fix2(_ismatch, pred), arguments(ex))
-    elseif isexpr(ex)
-        return any(Base.Fix2(_ismatch, pred), children(ex))
-    end
-    pred(ex)
-end
-
-# if expression operation, `op`, matches via `is_match` replace with `f(op)`
-function map_matched_head(ex, is_match, f)
-    !iscall(ex) && return ex
-    op = operation(ex)
-    is_match(op) && (op = f(op))
-    args′ = map_matched_head.(arguments(ex), is_match, f)
-    T = typeof(first(args′))
-    if T <: Expr || T <: Symbol || T <: Number
-        return pterm(Symbol(op), args′)
-    else
-        return sterm(T, op, args′)
-    end
-end
-
-# does predicate match an operation in the expression
-function _ismatchhead(ex, pred)
-    if iscall(ex)
-        pred(operation(ex)) && return true
-        return any(Base.Fix2(_ismatchhead, pred), arguments(ex))
-    elseif isexpr(ex)
-        pred(head(ex)) && return true
-        return any(Base.Fix2(_ismatchhead, pred), children(ex))
-    end
-    pred(ex)
-end

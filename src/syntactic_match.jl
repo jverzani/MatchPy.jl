@@ -1,6 +1,6 @@
 function syntactic_match(s, p, σ = match_dict())
     if !has_𝑋(p) # no wild
-        out = (_unwrap_const(s) == p) ? σ : nothing
+        out = (_unwrap_const(s) == _unwrap_const(p)) ? σ : nothing
         return out
     elseif is_slot(p)
         var = varname(p)
@@ -62,4 +62,57 @@ function syntactic_match(s, p, σ = match_dict())
     end
 
     return σ
+end
+
+# other matching
+## Matching
+# copy of  CallableExpressions.expression_map_matched(pred, mapping, u)
+# if argument, `a`, matches via `is_match` replace with `f(a)`
+function map_matched(ex, is_match, f)
+    T = symtype(ex)
+    if !iscall(ex)
+        return is_match(ex) ? f(ex) : ex
+    else
+        is_match(ex) && return f(ex)
+        iscall(ex) || return ex
+        children = map_matched.(arguments(ex), is_match, f)
+        return sterm(T, operation(ex), children)
+    end
+end
+
+
+# does predicate match an argument in the expression
+function _ismatch(ex, pred)
+    if iscall(ex)
+        return any(Base.Fix2(_ismatch, pred), arguments(ex))
+    elseif isexpr(ex)
+        return any(Base.Fix2(_ismatch, pred), children(ex))
+    end
+    pred(ex)
+end
+
+# if expression operation, `op`, matches via `is_match` replace with `f(op)`
+function map_matched_head(ex, is_match, f)
+    !iscall(ex) && return ex
+    op = operation(ex)
+    is_match(op) && (op = f(op))
+    args′ = map_matched_head.(arguments(ex), is_match, f)
+    T = typeof(first(args′))
+    if T <: Expr || T <: Symbol || T <: Number
+        return pterm(Symbol(op), args′)
+    else
+        return sterm(T, op, args′)
+    end
+end
+
+# does predicate match an operation in the expression
+function _ismatchhead(ex, pred)
+    if iscall(ex)
+        pred(operation(ex)) && return true
+        return any(Base.Fix2(_ismatchhead, pred), arguments(ex))
+    elseif isexpr(ex)
+        pred(head(ex)) && return true
+        return any(Base.Fix2(_ismatchhead, pred), children(ex))
+    end
+    pred(ex)
 end

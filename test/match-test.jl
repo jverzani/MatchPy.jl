@@ -76,6 +76,9 @@ end
         (pat = :((~x)^(~!y)),
          sub = :(a),
          len = 1),
+        (pat = :((~x)^(~y)),
+         sub = :(a),
+         len = 0),
         (pat = :((~x)^(~!y)),
          sub = :(a^2),
          len = 1),
@@ -86,7 +89,17 @@ end
          sub = :(a + b),
          len = 2),
 
+        # defslot combos
+        (pat = :((~!a)*(~x)),
+         sub = :(x),
+         len = 1),
+        (pat = :((~!a)*(~x) + (~!b)),
+         sub = :(x),
+         len = 1),
+
+
         # wrapped in functions
+
         (pat = :(log(~x) + log(~y)),
          sub = :(log(a) + log(b)),
          len = 2),
@@ -120,6 +133,21 @@ end
          sub = :(log(log(a)) + log(log(b))),
          len = 2),
 
+        # single argument
+        (pat = :(f(~x)),
+         sub = :(f(a,b,c)),
+         len = 0),
+        (pat = :(fₐ(~x)),
+         sub = :(fₐ(a,b,c)), # associative matches MP, not R2
+         len = 1),
+        (pat = :(fₐₘ(~x)),   # associative matches MP, not R2
+         sub = :(fₐₘ(a,b,c)),
+         len = 1),
+        (pat = :(fₘ(~x)),
+         sub = :(fₘ(a,b,c)),
+         len = 0),
+
+        # multiple
         (pat = :(f(~~~x, ~~~y)),
          sub = :(f(a,b,c)),
          len = 2),
@@ -139,12 +167,32 @@ end
          sub = :(fₐₘ(a,b,c)),
          len = 8),
 
+        (pat = :(exp(~y) + exp(~x)),
+         sub = :(exp(y) + exp(x)),
+         len = 2),
+        (pat = :(*(~a, ~~x) + *(~b,~~x)),
+         sub = :(2x + 3*x*y),
+         len = 4),
+        (pat = :((~!a)*sin(~x) ^ 2 + (~!a)*cos(~x) ^ 2),
+         sub =  :(sin(2x) ^ 2 + cos(2x) ^ 2),
+         len = 1),
+        (pat = :((~!a)*sin(~x) ^ 2 + (~!a)*cos(~x) ^ 2),
+         sub =  :(x*sin(2x) ^ 2 + x*cos(2x) ^ 2),
+         len = 1),
+        (pat = :((~x)^(~!m) * (~x)^(~!n)),
+         sub = :(x^2 * x^3),
+         len = 2),
+        (pat = :(~!a * sin(~!b *~x + ~!c)^(~!m)),
+         sub = :(sin(2x)),
+         len = 2),
+
     ]
 
     for (i,(;pat, sub, len)) ∈ enumerate(ts)
         σs = _eachmatch(pat, sub, MP())
         γs = _eachmatch(pat, sub, R2())
         u = collect(σs)
+        length(u) != len && @show i
         @test length(u) == len
         @test length(γs) ≤ length(u)
         #length(γs) < length(u) && (@show pat, sub, :different)
@@ -193,7 +241,45 @@ end
 
 end
 
+@testset "guards" begin
+    ts = [
+        (pat = :(~a*~x::(>=(0))),
+         sub = :(2x),
+         len=1),
 
+        (pat = :(~x::(iseven)),
+         sub = 2,
+         len = 1),
+
+        (pat = :(~x::(iseven)),
+         sub = 3,
+         len = 0),
+
+    ]
+
+    for (pat, sub, len) ∈ ts
+        for M ∈ (MP(), R2())
+            σs = MatchPy._eachmatch(pat, sub, M)
+            @test length(collect(σs)) == len
+        end
+    end
+
+    # MP treats ~~x differently
+    ts′ = [
+
+        (pat = :(+(~~x::(u->iseven(length(u))))),
+         sub = :(a + b + c),
+         len = 0),
+        (pat = :(+(~~x::(u->iseven(length(u))))),
+         sub = :(a + b),
+         len = 1),
+
+    ]
+    for (pat, sub, len) ∈ ts′
+        σs = MatchPy._eachmatch(pat, sub, MP())
+        @test length(collect(σs)) == len
+    end
+end
 
 @testset "replace head" begin
     # replace operation
@@ -215,8 +301,8 @@ end
 
         # replace parts
         ex = :(log(1 + x^2) + log(1 + x^3))
-        rule = :(log(1+(~~~x))) => :(log1p((~~~x)))
-        u = _replace(ex, rule,M )
+        rule = :(log(1+(~x))) => :(log1p(~x))
+        u = _replace(ex, rule, M)
         @test u == :(log1p(x^2) + log1p(x^3))
 
     #@test _replace(ex, :(log(1+(~~~x))) => :(log1p((~~~x)))) == log1p(x ^ 2) + log1p(x ^ 3)
@@ -266,5 +352,20 @@ end
 
         ex = :(x * sin(x))
         @test _replace(ex, :(x*sin(x)) => :x, M) == :x
+    end
+end
+
+@testset "simplify" begin
+    si(ex) = MatchPy._simplify(ex, Expr)
+
+    ss = (:(2x + 3x + 4),
+          :(sin(x)/cos(x)),
+          :(20*sin(x) * cos(x)),
+          :(10*sin(x^2)^2 + 10*cos(x^2)^2 + 10),
+          :(10*log(x)),
+          )
+
+    for ex ∈ ss
+        @test ex != si(ex)
     end
 end
