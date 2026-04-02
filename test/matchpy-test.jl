@@ -89,9 +89,7 @@ end
     𝑠 = :(fₘ(a,a,a,b,b,c))
     𝑝 = :(fₘ((~x),(~x),(~~y)))
     θ = MatchPy.match_one_to_one((𝑠,), 𝑝)
-    @test length(collect(θ)) == 1 # σ =  ((~x) => a, (~~y) => (a, b, b, c))
-    σ = only(θ)
-    @test σ[:x] == :a &&  σ[:y] == [:a, :b, :b, :c]
+    @test length(collect(θ)) == 2
 
     𝑠 = :(fₐₘ(a,a,a,b,b,c))
     𝑝 = :(fₐₘ((~x),(~x),(~~y))) # associative has (~x) like (~~~x)

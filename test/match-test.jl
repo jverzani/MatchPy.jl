@@ -145,6 +145,9 @@ end
         (pat = :(fₘ(~x)),
          sub = :(fₘ(a,b,c)),
          len = 0),
+        (pat = :(fₘ(~x, ~y)),
+         sub = :(fₘ(a, b)),
+         len = 2),
 
         # multiple
         (pat = :(f(~~~x, ~~~y)),
@@ -251,19 +254,19 @@ end
 
 end
 
-@testset "replace head" begin
-    # replace operation
-    ex = :(log(1 + x^2) + log(1 + x^3))
-    rule = log=>log1p
-    @test _replace(ex, rule) == :(log1p(1 + x ^ 2) + log1p(1 + x ^ 3))
+@testset "_rewrite" begin
+    σ = MatchPy.match_dict(:x=>:x, :y=>1, :z=>[1,2,3])
+    @test MatchPy._rewrite(Expr, σ, :(sin(~x))) == :(sin(x))
+    @test MatchPy._rewrite(Expr, σ, :(~y + ~x)) == :(1 + x)
+    @test MatchPy._rewrite(Expr, σ, :(~x * cos((~x)^2))) == :(x*cos(x^2))
+    # not handled, use splat
+    @test_broken MatchPy._rewrite(Expr, σ, :(+(~~z...))) == :(1 + 2 + 3)
+    @test eval(MatchPy._rewrite(Expr, σ, :(splat(+)(~~z)))) == 6
 
-    ex = :(f(a,a,b))
-    rule = :(f(~~x)) => :(g(~~x))
-    u = _replace(ex, rule)
-    @test operation(u) == :g # :(g(Any[:a, :a, :b]))
 end
 
-@testset "replace" begin
+
+@testset "_replace" begin
 
     # replace parts
     ex = :(log(1 + x^2) + log(1 + x^3))
@@ -309,7 +312,19 @@ end
     @test _replace(:(sin(a)), :(sin((~x))) => 2) == 2
 end
 
-@testset "replace exact" begin
+@testset "_replace head" begin
+    # replace operation
+    ex = :(log(1 + x^2) + log(1 + x^3))
+    rule = log=>log1p
+    @test _replace(ex, rule) == :(log1p(1 + x ^ 2) + log1p(1 + x ^ 3))
+
+    ex = :(f(a,a,b))
+    rule = :(f(~~x)) => :(g(~~x))
+    u = _replace(ex, rule)
+    @test operation(u) == :g # :(g(Any[:a, :a, :b]))
+end
+
+@testset "_replace exact" begin
     # no wild card
     ex = :(x^2 + x^4)
     @test _replace(ex, :(x^2) => :x) == :(x + x^4)
