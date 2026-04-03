@@ -255,13 +255,21 @@ end
 end
 
 @testset "_rewrite" begin
-    σ = MatchPy.match_dict(:x=>:x, :y=>1, :z=>[1,2,3])
+    σ = MatchPy.match_dict(:x=>:x, :y=>1, :z=>[1,2,3], :w => [1,:(x^2)])
+
     @test MatchPy._rewrite(Expr, σ, :(sin(~x))) == :(sin(x))
     @test MatchPy._rewrite(Expr, σ, :(~y + ~x)) == :(1 + x)
     @test MatchPy._rewrite(Expr, σ, :(~x * cos((~x)^2))) == :(x*cos(x^2))
-    # not handled, use splat
-    @test_broken MatchPy._rewrite(Expr, σ, :(+(~~z...))) == :(1 + 2 + 3)
+
+    # splatting is handled in a kludgy manner
+    @test eval(MatchPy._rewrite(Expr, σ, :(+(~~z...)))) == 6
     @test eval(MatchPy._rewrite(Expr, σ, :(splat(+)(~~z)))) == 6
+
+    # that works, but this fails --- the substitution is an expression...
+    ex = :(log(1 + x^2))
+    σ = MatchPy._match(:(log(1+(~~~w))), ex)
+    x = exp(1) - 1
+    @test_broken eval(_rewrite(Expr, σ, :(log1p(+(~~~w...))))) ≈ 1.0
 
 end
 
@@ -273,8 +281,7 @@ end
     rule = :(log(1+(~x))) => :(log1p(~x))
     u = _replace(ex, rule)
     @test u == :(log1p(x^2) + log1p(x^3))
-
-    #@test _replace(ex, :(log(1+(~~~x))) => :(log1p((~~~x)))) == log1p(x ^ 2) + log1p(x ^ 3)
+    @test_broken _replace(ex, :(log(1+(~~~x))) => :(log1p(+(~~~x...)))) == :(log1p(x ^ 2) + log1p(x ^ 3))
 
     ex = :(log(sin(x)) + tan(sin(x^2)))
     rule = sin => cos

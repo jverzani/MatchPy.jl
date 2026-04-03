@@ -111,7 +111,7 @@ end
 # θ \theta  is an iterator of substitutions;
 # default is (match_dict(),)
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
-    ## @show :m11, ss, p, fₐ
+    #@show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)     # constant symbol
         # match if p == ss(1)
@@ -144,12 +144,11 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
         iscall(s) || return ∅ # p is non constant, so must be compound, s should be as well
 
         p = normalize_pattern(p,s)
-        opₛ = operation(s)
-        𝑜𝑝ₛ = Symbol(opₛ)
-        if operation(p) == 𝑜𝑝ₛ
+        opₛ, opₚ = operation(s), operation(p)
+        if opₚ == Symbol(opₛ)
             ss, ps = arguments(s), arguments(p)
             fₐ′ = isassociative(opₛ) ? opₛ : nothing
-            λ = iscommutative(fₐ′) ? match_commutative_sequence : match_sequence
+            λ = iscommutative(opₛ) ? match_commutative_sequence : match_sequence
             return λ(ss, ps, fₐ′, θ)
         end
 
@@ -216,7 +215,7 @@ end
 # 3.3 match non-commutative function
 #     return iterator of matches
 function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
-    #@show :ms, ss, ps, collect(θ)
+    #@show :ms, ss, ps, fₐ, collect(θ)
     n, m = length(ss), length(ps)
     nstar = count(is_segment, ps)
     m - nstar > n && return ∅ # total number of arguments required in the pattern
@@ -224,19 +223,12 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
 
     nplus = count(is_plus, ps)
     if !isnothing(fₐ)
-        nplus += count(is_slot, ps) # ount regular vars as plus vars in assoc. function
-    end
-
-    if iszero(nstar) && iszero(nplus) && n == m
-        for (s,p) ∈ zip(ss, ps)
-            θ = match_one_to_one([s], p, fₐ, θ)
-        end
-        return θ
-
+        nplus += count(is_slot, ps) # count regular vars as plus vars in assoc. function
     end
 
     nfree = n - m + nstar
     nseq = nstar + nplus
+
     λ = ks -> begin
         #(!isempty(ks) && sum(ks) != nfree) && return nothing
         i, j = 1, 1 # 0,0 in 0-based
@@ -245,11 +237,14 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
             lsub = 1
             if (is_plus(pl) || is_segment(pl)) ||
                 (is_slot(pl) && !isnothing(fₐ))
+
                 kj = isempty(ks) ? 1 : ks[j]
                 lsub = lsub + kj
+
                 if is_segment(pl)
                     lsub = lsub - 1
                 end
+
                 j = j + 1
             end
             ss′ = ss[i:(i+lsub-1)] # si...si+lsub (note -1 here)
@@ -260,17 +255,18 @@ function match_sequence(ss, ps, fₐ=nothing, θ=(match_dict(),))
         θ′ == ∅ && return nothing
         return θ′
     end
-   i = multiexponents(nseq, nfree) # For every distribution of free arguments is ss among the
+
+    i = multiexponents(nseq, nfree) # For every distribution of free arguments is ss among the
                                     # seq. vars...
     ii = Iterators.map(λ, i)
     iii = Iterators.filter(!isnothing, ii)
-    Iterators.flatten(iii)
+    Iterators.flatten(iii)          # θᵣ = θᵣ ∪ θ′
 end
 
 ## ---- commutative (associative when fₐ != nothing)
 
 function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),))
-    #@show :mcs, ss, ps, collect(θ)
+    #@show :mcs, ss, ps, fₐ,collect(θ)
     out = _match_constant_patterns(ss, ps)
     isnothing(out) && return ∅
 
@@ -281,6 +277,7 @@ function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),)
         Iterators.map(σ -> (ss, ps, σ), θ)
     end
 
+    #=
     ii = Iterators.map(enumerate(i)) do (j,a)
         ss, ps, σ = a
         itr = _match_defslot_patterns(ss, ps, fₐ, σ)
@@ -293,6 +290,13 @@ function match_commutative_sequence(ss, ps, fₐ = nothing, θ = (match_dict(),)
         itr = _match_non_variable_patterns(ss, ps, fₐ, σ)
         itr
     end
+    =#
+    iii = Iterators.map(i) do a
+        ss, ps, σ = a
+        itr = _match_non_variable_patterns(ss, ps, fₐ, σ)
+        itr
+    end
+
 
     iiia = Iterators.filter(!isnothing, iii)
     iiib = Iterators.flatten(iiia)
@@ -323,7 +327,7 @@ function _match_constant_patterns(ss, ps)
     #@show :mcp, ss, ps
     Pconst = filter(!has_𝑋, ps)
     ss′ = ss
-    for p ∈ Pconst
+    for p ∈ Pconst      # check Pconst ⊂ ss, else return nothing
         if isa(p, Symbol)
             p in Symbol.(ss′) || return nothing
             ss′ = filter(s -> !=(Symbol(s), p), ss′)
@@ -443,9 +447,10 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
             p, θ′ = check_nonmatching_defslot(s,p, θ′)
             p = normalize_pattern(p,s) # rewrite pattern if needed
             (iscall(s) && iscall(p)) || return nothing
-            soperation(s) == operation(p) || return nothing
-            fₐ′ = isassociative(operation(s)) ? operation(s) : nothing
-            λ = iscommutative(fₐ′) ? match_commutative_sequence : match_sequence
+            opₛ, opₚ = operation(s), operation(p)
+            Symbol(opₛ) == opₚ || return nothing
+            fₐ′ = isassociative(opₛ) ? opₛ : nothing
+            λ = iscommutative(opₚ) ? match_commutative_sequence : match_sequence
             θ′ = λ(arguments(s), arguments(p), fₐ′, θ′)
             θ′ == ∅ && return nothing
         end
@@ -453,7 +458,29 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
         ss′′ = setdiff(ss, ss′) # so ss′ and ps′ have matches in θ′
         return ((ss′′, ps′′, σ) for σ ∈ θ′)
     end
-    ii = Iterators.map(f, i)
+#    ii = Iterators.map(f, i)
+
+    g = inds -> begin
+        ss′= ss[inds]
+        θ′ = (σ,)
+        for (s,p) ∈ zip(ss′, ps′)
+            p, θ′ = check_nonmatching_defslot(s,p, θ′)
+            p = normalize_pattern(p,s) # rewrite pattern if needed
+            (iscall(s) && iscall(p)) || return nothing
+            opₛ, opₚ = operation(s), operation(p)
+            Symbol(opₛ) == opₚ || return nothing
+            fₐ′ = isassociative(opₛ) ? opₛ : nothing
+#            λ = iscommutative(opₚ) ? match_commutative_sequence : match_sequence
+#            θ′ = λ(arguments(s), arguments(p), fₐ′, θ′)
+            θ′ = match_one_to_one([s],p, fₐ′, θ′)
+            θ′ == ∅ && return nothing
+        end
+        θ′ == ∅ && return nothing
+        ss′′ = setdiff(ss, ss′) # so ss′ and ps′ have matches in θ′
+        return ((ss′′, ps′′, σ) for σ ∈ θ′)
+    end
+    ii = Iterators.map(g, i)
+
     iii = Iterators.filter(!isnothing, ii)
     iv = Iterators.flatten(iii)
 end
@@ -516,7 +543,7 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
     if length(ps_reg) < length(ss)
         if ps_reg == ps
             # can't match, not enough
-            return nothing # ∅
+            return ∅
         end
     end
 

@@ -1,14 +1,6 @@
 # For dispatch
 ### ---- match, eachmatch, replace
 
-function _match(pat::Union{Symbol, Expr}, sub)
-    σs = _eachmatch(pat, sub)
-    σ = iterate(σs)
-    isnothing(σ) && return nothing
-    first(σ)
-end
-
-
 # return iterator of each possible match
 function _eachmatch(pat::Union{Symbol,Expr}, ex)
     if has_𝑋(pat)
@@ -19,38 +11,53 @@ function _eachmatch(pat::Union{Symbol,Expr}, ex)
     end
 end
 
-
-## --- walk over expression
-
-function walk(T, ex, inner, outer)
-    _hasoperation(ex) || return outer(ex)
-    ex′ = sterm(T, _head(ex), map(inner, _children(ex)))
-    outer(ex′)
+function _match(pat::Union{Symbol, Expr}, sub)
+    σs = _eachmatch(pat, sub)
+    σ = iterate(σs)
+    isnothing(σ) && return nothing
+    first(σ)
 end
 
-function postwalk(f, ex, T)
-    walk(T, ex, ex -> postwalk(f,ex, T), f)
-end
-prewalk(f, x, T)  = walk(T, f(x), x -> prewalk(f, x, T), identity)
-
-# utils to make more generic
-_hasoperation(ex) = !is_𝑋(ex) && (iscall(ex) || isexpr(ex))
-_children(ex) = iscall(ex) ? arguments(ex) : children(ex)
-_head(ex) = iscall(ex) ? operation(ex) : head(ex)
 
 
 # T is symbolic type (Expr, ...) passed to sterm in walk
 # rhs an Expr, Number, Symbol
+# XXX This is an issue and not general enough
 function _rewrite(T, σ::MatchDict, rhs)
     postwalk(rhs, T) do rhs
         if is_𝑋(rhs)
             var = varname(rhs)
-            haskey(σ, var) ? σ[var] : error("XXX no match  in σ for $var XXX $rhs $σ")
+            if haskey(σ, var)
+                out = σ[var]
+                return out
+            else
+                error("No match in $σ for $var from $rhs")
+            end
         else
             rhs
         end
     end
 end
+
+
+
+## --- walk over expression, but return symtype of T
+function walk(T, ex, inner, outer)
+    (!is_𝑋(ex) && (iscall(ex) || isexpr(ex))) || return outer(ex)
+    if isexpr(ex) && !iscall(ex)
+        ex′ = Expr(head(ex), map(inner, children(ex))...)
+    elseif isexpr(ex)
+        if T == Expr
+            ex′ = pterm(operation(ex),  map(inner, arguments(ex)); elide=false)
+        else
+            ex′ = sterm(T, operation(ex), map(inner, arguments(ex)))
+        end
+    end
+    outer(ex′)
+end
+
+postwalk(f, ex, T) = walk(T, ex,    x -> postwalk(f,x, T), f)
+prewalk(f, ex, T)  = walk(T, f(ex), x -> prewalk(f, x, T), identity)
 
 
 """
@@ -241,7 +248,6 @@ function _rewrite(σ::MatchDict, rhs::Expr)
             error("No match found for variable $(var)") #it should never happen
         end
     end
-
     # otherwise call recursively on arguments and then reconstruct expression
     args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
     return pterm(operation(rhs), args; elide=false)

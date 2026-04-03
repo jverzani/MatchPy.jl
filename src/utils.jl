@@ -168,9 +168,9 @@ end
 
 
 function sterm(S, op, args)
-    _isexpr = S == Expr
-    if _isexpr
-        !isa(op, Symbol) && (op = nameof(op))
+    _isexpr =
+    if S == Expr
+        !isa(op, Union{Expr, Symbol}) && (op = nameof(op))
     else
         if isa(op, Symbol)
             for M ∈ (@__MODULE__, Main, Base)
@@ -180,9 +180,11 @@ function sterm(S, op, args)
                 end
             end
             isa(op, Symbol) && (op = eval(op))
+        elseif isa(op, Expr)
+            op = eval(op)
         end
     end
-    _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+    S == Expr ? pterm(op, args) : maketerm(S, op, args, nothing)
 end
 
 
