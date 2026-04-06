@@ -8,16 +8,16 @@ This algorithm finds all matches of a pattern employing wildcards against a subj
 
 ```
 julia> @time MatchPy._eachmatch(:(~x + ~y), :(a + b + c));
-  0.000053 seconds (79 allocations: 4.609 KiB)
+  0.000071 seconds (60 allocations: 3.000 KiB)
 
 julia> @time MatchPy._eachmatch(:(~x + ~y), :(a + b)) |> collect
-  0.000199 seconds (561 allocations: 30.406 KiB)
+  0.000203 seconds (527 allocations: 26.219 KiB)
 2-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:x => :a, :y => :b)
  Base.ImmutableDict(:x => :b, :y => :a)
 
 julia> @time MatchPy._eachmatch(:(~x + ~y), :(a + b + c)) |> collect
-  0.000270 seconds (1.50 k allocations: 74.984 KiB)
+  0.000233 seconds (1.46 k allocations: 70.125 KiB)
 6-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:x => :a, :y => :(b + c))
  Base.ImmutableDict(:x => :b, :y => :(a + c))
@@ -25,6 +25,7 @@ julia> @time MatchPy._eachmatch(:(~x + ~y), :(a + b + c)) |> collect
  Base.ImmutableDict(:x => :c, :y => :(a + b))
  Base.ImmutableDict(:x => :(a + c), :y => :b)
  Base.ImmutableDict(:x => :(b + c), :y => :a)
+
  ```
 
 The reduced number of allocations in the first call, is due to the values being returned as a generator. There are additional allocations when iterated by `collect`. The second example shows commutativity being employed, as `+` is assumed to be commutative. As well, `+` is assumed to be associative, so there are 6 matches in the last example, the first of which matches `:(a + (b+c))`.

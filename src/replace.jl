@@ -28,8 +28,7 @@ function _rewrite(T, σ::MatchDict, rhs)
         if is_𝑋(rhs)
             var = varname(rhs)
             if haskey(σ, var)
-                out = σ[var]
-                return out
+                return σ[var]
             else
                 error("No match in $σ for $var from $rhs")
             end
@@ -122,7 +121,7 @@ Replacements occur only if an entire node in the expression tree is matched:
 julia> u = 1 + x
 1 + x
 
-julia> replace(u + exp(-u), u => x^2)
+julia> _replace(u + exp(-u), u => x^2)
 1 + x + exp(-x ^ 2)
 ```
 
@@ -188,7 +187,7 @@ function _replace(ex, uv::Pair)
     u,v = uv
 
     # Expr
-    isa(u, Expr) && return _replace_arguments(ex, u, v)
+    isa(u, Expr) && return _replace_arguments(symtype(ex), ex, u, v)
 
     # is u function replace head
     isa(u, Function) && return map_matched_head(ex, ==(Symbol(u)), _ -> v)
@@ -197,23 +196,11 @@ function _replace(ex, uv::Pair)
     return map_matched(ex, ==(u), _ -> v)
 end
 
-
-function _replace_arguments(ex::Expr, u, v)
-    __replace_arguments(ex, u, v)
-end
-function _replace_arguments(ex, u, v)
-    __replace_arguments(ex, u, v) #|> eval
-end
-
-# return Expression
-function __replace_arguments(ex, u, v)
-    T = symtype(ex)
-    __replace_arguments(T, ex, u, v)
-end
-
-function __replace_arguments(T, ex, u, v)
+function _replace_arguments(T, ex, u, v)
     iscall(ex) || return (ex == u ? v : ex)
+
     σ = _match(u, ex) # sigma is nothing, (), or a substitution
+
     if !isnothing(σ)
         σ == () && return v # no substitution
         return _rewrite(T, σ, v)
@@ -221,40 +208,7 @@ function __replace_arguments(T, ex, u, v)
 
     # peel off
     op, args = operation(ex), arguments(ex)
-    args′ = __replace_arguments.(args, (u,), (v,))
+    args′ = _replace_arguments.((T,), args, (u,), (v,))
     return sterm(T, op, args′)
 
 end
-
-## ------
-# replace variables in rhs with values looked upin σ
-# return an Expr (or Symbol or literal number)
-# From SymbolicIntegration.jl
-function _rewrite(σ::MatchDict, rhs::Expr)
-    if !iscall(rhs)
-        if isexpr(rhs)
-            args = [_rewrite(σ, a) for a ∈ children(rhs)]
-            return Expr(head(rhs), args...)
-        else
-            return rhs
-        end
-    end
-
-    if is_𝑋(rhs)
-        var = varname(rhs)
-        if haskey(σ, var)
-            return σ[var]
-        else
-            error("No match found for variable $(var)") #it should never happen
-        end
-    end
-    # otherwise call recursively on arguments and then reconstruct expression
-    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
-    return pterm(operation(rhs), args; elide=false)
-end
-
-_rewrite(matches::MatchDict, rhs::Symbol) = rhs::Symbol
-_rewrite(matches::MatchDict, rhs::Real) = rhs::Real
-_rewrite(matches::MatchDict, rhs::String) = rhs::String
-_rewrite(matches::MatchDict, rhs::LineNumberNode) = nothing::Nothing
-_rewrite(matches::MatchDict, rhs::QuoteNode) = rhs::QuoteNode
