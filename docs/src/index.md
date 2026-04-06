@@ -60,6 +60,8 @@ Patterns are specified with wildcards of which there is a variety. We follow the
 
 * Wildcards may have predicates or *guards* attached to them through the notation `:(~x::predicate)`. A match only occurs when the accompanying predicate is `true` for the proposed value.
 
+* A function head can be matched with a slot variable. That is the pattern `:((~F)(~x))` will match `:(sin(x))` with `:F => :sin` and `:x => x`
+
 
 
 ### Examples

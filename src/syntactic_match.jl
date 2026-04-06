@@ -14,16 +14,21 @@ function syntactic_match(s, p, σ = match_dict())
             return (σ[var] != s) ?  ϟ : σ
         end
 
-        !pass_any_guard(p, s) || return ϟ
+        pass_any_guard(p, s) || return ϟ
         return match_dict(σ, var => s)
     else
+        σ′ = σ
+
         opₛ, opₚ = operation(s), operation(p)
-        Symbol(opₛ) == opₚ || return ϟ
+        if is_𝑋(opₚ)
+            σ′ = match_dict(σ′, varname(opₚ) => opₛ)
+        else
+            Symbol(opₛ) == opₚ || return ϟ
+        end
         ss, ps = arguments(s), arguments(p)
         length(ss) == length(ps) || return ϟ
-        σ′ = σ
         for (sᵢ, pᵢ) ∈ zip(ss, ps)
-            σ′ = syntacticmatch(sᵢ,pᵢ, σ′)
+            σ′ = syntactic_match(sᵢ,pᵢ, σ′)
             σ′ == ϟ && return ϟ
         end
         return σ′

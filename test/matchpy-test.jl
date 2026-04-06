@@ -19,24 +19,40 @@ end
 
 
 ## -- test internal functions
-@testset "exact" begin
-    𝑝, 𝑠 = :(cos(sin(a))), :(cos(sin(a)))
-    m = MatchPy.syntactic_match(𝑠, 𝑝)
+@testset "syntactic_match" begin
+    pat, sub = :(cos(sin(a))), :(cos(sin(a)))
+    m = MatchPy.syntactic_match(sub, pat)
     @test m == MatchPy.MatchDict()
 
-    𝑝, 𝑠 = :(cos(sin(a))), :(cos(sin(b)))
-    m = MatchPy.syntactic_match(𝑠, 𝑝)
+    pat, sub = :(sin(~x)), :(sin(2x + cos(x)))
+    m = MatchPy.syntactic_match(sub, pat)
+    @test m[:x] == :(2x + cos(x))
+
+    pat, sub = :(F(sin(~x), ~x)), :(F(sin(2x), 2x))
+    m = MatchPy.syntactic_match(sub, pat)
+    @test m[:x] == :(2x)
+
+    pat, sub = :(cos(sin(a))), :(cos(sin(b)))
+    m = MatchPy.syntactic_match(sub, pat)
     @test isnothing(m)
 
-    𝑝, 𝑠 = :(sin(cos(a))), :(cos(a))
-    m = MatchPy.syntactic_match(𝑝, 𝑠)
+    pat, sub = :(sin(cos(a))), :(cos(a))
+    m = MatchPy.syntactic_match(sub, pat)
     @test isnothing(m)
+
+    pat = :((~F)(~x, ~y))
+    sub = :(g(a,b))
+    m = MatchPy.syntactic_match(sub, pat)
+    @test length(m) == 3
+    @test m[:F] == :g
+
+
 end
 
 @testset "associative" begin
-    𝑠 = :(1 + a + b)
-    𝑝 = :(1 + (~x))
-    θ = MatchPy.match_one_to_one((𝑠,), 𝑝)
+    sub = :(1 + a + b)
+    pat = :(1 + (~x))
+    θ = MatchPy.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 1
     σ = only(θ)
     @test σ[:x] == :(a + b)
@@ -46,9 +62,9 @@ end
 
     # match
     # should not match
-    𝑠 = :(log(1 + (x^2/2 - x^4/24)))
-    @test !isnothing(_match(:(log(1 + ~x)), 𝑠))
-    @test !isnothing(_match(:(log(1 + (~~~x))), 𝑠)) # again (~x) like (~~~x)
+    sub = :(log(1 + (x^2/2 - x^4/24)))
+    @test !isnothing(_match(:(log(1 + ~x)), sub))
+    @test !isnothing(_match(:(log(1 + (~~~x))), sub)) # again (~x) like (~~~x)
 
 end
 
@@ -76,9 +92,9 @@ end
 
 
 @testset "non-variable" begin
-    𝑝 =:(fₘ(g(a,(~x)), g((~x),(~y)), g((~~~z))))
-    𝑠 = :(fₘ(g(a,b), g(b,a), g(a,c)))
-    θ = MatchPy.match_one_to_one((𝑠,), 𝑝)
+    pat =:(fₘ(g(a,(~x)), g((~x),(~y)), g((~~~z))))
+    sub = :(fₘ(g(a,b), g(b,a), g(a,c)))
+    θ = MatchPy.match_one_to_one((sub,), pat)
     σ = only(θ)
     @test length(σ) == 3
     @test σ[:x] == :b && σ[:y] == :a && σ[:z] == [:a, :c]
@@ -86,14 +102,14 @@ end
 end
 
 @testset "regular variables" begin
-    𝑠 = :(fₘ(a,a,a,b,b,c))
-    𝑝 = :(fₘ((~x),(~x),(~~y)))
-    θ = MatchPy.match_one_to_one((𝑠,), 𝑝)
+    sub = :(fₘ(a,a,a,b,b,c))
+    pat = :(fₘ((~x),(~x),(~~y)))
+    θ = MatchPy.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 2
 
-    𝑠 = :(fₐₘ(a,a,a,b,b,c))
-    𝑝 = :(fₐₘ((~x),(~x),(~~y))) # associative has (~x) like (~~~x)
-    θ = MatchPy.match_one_to_one((𝑠,), 𝑝)
+    sub = :(fₐₘ(a,a,a,b,b,c))
+    pat = :(fₐₘ((~x),(~x),(~~y))) # associative has (~x) like (~~~x)
+    θ = MatchPy.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 3 # ((~x) => fₐₘ(a, b), (~~y) => fₐₘ(a, c))
 
 end

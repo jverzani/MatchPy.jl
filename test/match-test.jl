@@ -188,6 +188,14 @@ end
          sub = :(sin(2x)),
          len = 2),
 
+        # function head
+        (pat = :((~F)(~x, ~y)),
+         sub = :(g(a, b)),
+         len = 1),
+        (pat = :((~F)(~x, ~~y)),
+         sub = :(g(a, b,c)),
+         len = 1),
+
     ]
 
     for (i,(;pat, sub, len)) ∈ enumerate(ts)

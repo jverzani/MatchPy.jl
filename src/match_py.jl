@@ -71,13 +71,17 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
         p = normalize_pattern(p,s)
         opₛ, opₚ = operation(s), operation(p)
-        if opₚ == Symbol(opₛ)
-            ss, ps = arguments(s), arguments(p)
-            fₐ′ = isassociative(opₛ) ? opₛ : nothing
-            λ = iscommutative(opₛ) ? match_commutative_sequence : match_sequence
-            return λ(ss, ps, fₐ′, θ)
-        end
 
+        if is_𝑋(opₚ) # check for variable function head
+            σ′ = match_dict(varname(opₚ) => opₛ)
+            θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+        else
+            Symbol(opₛ) == opₚ || return ()
+        end
+        ss, ps = arguments(s), arguments(p)
+        fₐ′ = isassociative(opₛ) ? opₛ : nothing
+        λ = iscommutative(opₛ) ? match_commutative_sequence : match_sequence
+        return λ(ss, ps, fₐ′, θ)
     end
     return ∅
 end
@@ -236,7 +240,12 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
             p = normalize_pattern(p,s) # rewrite pattern if needed
             (iscall(s) && iscall(p)) || return nothing
             opₛ, opₚ = operation(s), operation(p)
-            Symbol(opₛ) == opₚ || return nothing
+            if is_𝑋(opₚ) # check for variable function head
+                σ′ = match_dict(varname(opₚ) => opₛ)
+                θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+            else
+                Symbol(opₛ) == opₚ || return nothing
+            end
             θ′ = match_one_to_one([s],p, opₛ, θ′)
             θ′ == ∅ && return nothing
         end
@@ -586,8 +595,7 @@ function clear_defslots(ss, p, fₐ, θ)
         θ′ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
 
         itr = match_one_to_one(ss, p′, fₐ, θ′)
-
-        (isempty(itr) || isnothing(itr)) && continue
+        (isnothing(itr) || isempty(itr)) && continue
         length(inds′) < length(inds) && return itr # avoid all defslots?
         θ′′ = union(θ′′, itr)
     end

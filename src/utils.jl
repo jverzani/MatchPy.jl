@@ -189,8 +189,8 @@ is_plus(x::Any) = false
 is_op(x::Any) = false
 
 # Expr
-is_𝑋(x::Expr) = (iscall(x) && first(x.args) === :(~))  ||
-    (isexpr(x) && head(x) != :... && is_𝑋(first(x.args)))
+is_𝑋(x::Expr) = (iscall(x) && operation(x) === :(~))  ||
+    ((!iscall(x) && isexpr(x)) && head(x) != :... && is_𝑋(first(x.args)))
 
 function has_𝑋(x::Expr)
     is_𝑋(x) && return true
