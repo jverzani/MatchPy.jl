@@ -105,10 +105,10 @@ For symbolic expressions, we have:
 
 ```@repl replace
 julia> ex = cos(x)^2 + cos(x) + 1
-(cos(x) ^ 2) + cos(x) + 1
+1 + cos(x)^2 + cos(x)
 
 julia> _replace(ex, cos(x) => x)
-(x ^ 2) + x + 1
+1 + x + x^2
 ```
 
 Replacements occur only if an entire node in the expression tree is matched:
@@ -118,7 +118,7 @@ julia> u = 1 + x
 1 + x
 
 julia> _replace(u + exp(-u), u => x^2)
-1 + x + exp(-x ^ 2)
+1 + x + exp(-x^2)
 ```
 
 (As this addition has three terms, `1+x` is not a subtree in the expression tree.)
@@ -135,21 +135,21 @@ Wildcards have a naming convention:
 
 ```@repl replace
 julia> _replace(cos(pi + x^2), :(cos(pi + ~x)) => :(-cos(~x)))
--cos(x ^ 2)
+-cos(x^2)
 
 ```
 
 ```@repl replace
 julia> ex = log(sin(x)) + tan(sin(x^2))
-log(sin(x)) + tan(sin(x ^ 2))
+log(sin(x)) + tan(sin(x^2))
 
 julia> _replace(ex, :(sin(~x)) => :(tan((~x) / 2)))
-log(tan(x / 2)) + tan(tan((1/2) * x ^ 2)
+log(tan((1/2)*x)) + tan(tan((1/2)*x^2))
 
 julia> _replace(ex, :(sin(~x)) => :(~x))
-log(x) + tan(x ^ 2)
+log(x) + tan(x^2)
 
-julia> _replace(x*p, :((~x) * x) => :(~x) )
+julia> _replace(x*p, :((~x) * x) => :(~x))
 p
 ```
 
@@ -175,9 +175,13 @@ sin
             └─ 2       ...
 ```
 
-The command wildcard expression `:(cos(x + ~x))` looks at the part of the tree that has `cos` as a node, and the lone child is an expression with node `+` and child `x`. The `~x then matches `p + x^2`.
+In the `_replace` command, the  wildcard expression `:(cos(x + ~x))` looks at the part of the tree that has `cos` as a node, and the lone child is an expression with node `+` and child `x`. The `~x then matches `p + x^2`.
 
+```@repl replace
+julia> _replace(sin(x + x*log(x) + cos(x + p + x^2)), :(cos(x + ~x)) => :(sin(~x)))
+sin(x + x*log(x) + sin(p + x^2))
 
+```
 """
 function _replace(ex, uv::Pair)
     u,v = uv

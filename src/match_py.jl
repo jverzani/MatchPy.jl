@@ -67,11 +67,11 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
 
         p = normalize_pattern(p,s)
         opₛ, opₚ = operation(s), operation(p)
-
         if is_𝑋(opₚ) # check for variable function head
             σ′ = match_dict(varname(opₚ) => opₛ)
             θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
         else
+            # can't have defslot in p at this level
             Symbol(opₛ) == opₚ || return ()
         end
         ss, ps = arguments(s), arguments(p)
@@ -279,7 +279,7 @@ function check_nonmatching_defslot(s, p, θ′)
                 inds = findall(is_defslot, argsₚ)
                 if !isempty(inds)
                     val = defslot_op_map[opₚ]
-                    σ′ = match_dict((varname.(argsₚ[inds]) .=> val)...)
+                    σ′ = match_dict((varname.(argsₚ[inds]) .=> val)...) # no check for uniqueness of slot name
                     θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
 
                     ps = argsₚ[setdiff(eachindex(argsₚ), inds)]
