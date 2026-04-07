@@ -35,7 +35,7 @@ t matches s if there is a match with σ(t) = s
 # θ [\theta]  is an iterable of substitutions;
 # returns an interable of substitutions
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
-    # @show :m11, ss, p, fₐ
+    #@show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)              # constant expression/symbol/number
         # match if p == ss(1)
@@ -217,8 +217,8 @@ end
 
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
-function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
-    #@show :mnvp, ss, ps, σ
+function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
+    #@show :mnvp, ss, ps, fₐ, σ
 
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
@@ -238,18 +238,31 @@ function _match_non_variable_patterns(ss, ps, fc=nothing, σ=match_dict())
         for (s,p) ∈ zip(ss′, ps′)
             p, θ′ = check_nonmatching_defslot(s, p, θ′)
             p = normalize_pattern(p,s) # rewrite pattern if needed
-            (iscall(s) && iscall(p)) || return nothing
-            opₛ, opₚ = operation(s), operation(p)
-            if is_𝑋(opₚ) # check for variable function head
-                σ′ = match_dict(varname(opₚ) => opₛ)
+            # normalize might make p a non call, if so ...
+            if is_𝑋(p)
+                # predicate?
+                σ′ = match_dict(varname(p) => s)
                 θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
-            else
-                Symbol(opₛ) == opₚ || return nothing
+                continue
             end
-            θ′ = match_one_to_one([s],p, opₛ, θ′)
-            θ′ == ∅ && return nothing
+
+            opₚ = operation(p) # s may not be a call (defslots)
+            opₛ = nothing
+            if iscall(s)
+                if is_𝑋(opₚ) # check for variable function head
+                    opₛ = operation(s)
+                    σ′ = match_dict(varname(opₚ) => opₛ)
+                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+                elseif !any(is_defslot, arguments(p))
+                    opₛ = operation(s)
+                    Symbol(opₛ) == opₚ || return nothing
+                end
+            end
+            θ′ = match_one_to_one([s], p, opₛ,  θ′) # what op?
+
+            isempty(θ′) && return nothing
         end
-        θ′ == ∅ && return nothing
+        isempty(θ′) && return nothing
         ss′′ = setdiff(ss, ss′) # so ss′ and ps′ have matches in θ′
         return ((ss′′, ps′′, σ) for σ ∈ θ′)
     end
@@ -295,8 +308,8 @@ end
 
 # match ~x type variables
 # return iterator of (ss, ps, σ)
-function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
-    #@show :mrv, ss, ps, fc, σ
+function _match_regular_variables(ss, ps, fₐ=nothing, σ = match_dict())
+    #@show :mrv, ss, ps, fₐ, σ
     isempty(ps) && !isempty(ss) && return ∅
     isempty(ss) && !isempty(ps) && return ∅
 
@@ -308,7 +321,7 @@ function _match_regular_variables(ss, ps, fc=nothing, σ = match_dict())
     ss, ps = out
 
     # fₐ is  commutative, maybe associative
-    isassociative(fc) && return ((ss, ps, σ),) # associative turns ~x into ~~x
+    isassociative(fₐ) && return ((ss, ps, σ),) # associative turns ~x into ~~x
 
 
     ps_reg, ps′′ = _groupby(is_slot, ps)
@@ -340,8 +353,8 @@ end
 
 
 # return iterator of matches or nothing
-function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
-    #@show :msv, ss, ps, fc, σ
+function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
+    #@show :msv, ss, ps, fₐ, σ
 
     isempty(ps) && !isempty(ss) && return ∅
     isempty(ss) && !isempty(ps) && return ∅
@@ -353,7 +366,7 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
 
     ss, ps = out
 
-    if !isassociative(fc)
+    if !isassociative(fₐ)
         !isempty(filter(is_slot, ps)) && return nothing #()
     end
 
@@ -376,8 +389,8 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
     n1, n2 = length(pluses), length(stars)
     n = n1 + n2
 
-    h = isnothing(fc) ? identity :
-        (as) -> pterm(fc, as)
+    h = isnothing(fₐ) ? identity :
+        (as) -> pterm(fₐ, as)
 
     # rename
     ssᵥ = [v for (k,v) in ds] # last.(ds)
@@ -401,16 +414,16 @@ function _match_sequence_variables(ss, ps, fc=nothing, σ = match_dict())
             # give defaults; missing or value
             if isempty(vv)
                 if is_defslot(v)
-                    vv′ = defslot_op_map[fc]
+                    vv′ = defslot_op_map[fₐ]
                 elseif is_segment(v)
                     vv′ = Any[] #()
                 else
                     vv′ = nothing
                 end
             else
-                # if var is ~x fc not nothing
+                # if var is ~x fₐ not nothing
                 vv = sort(vv, lt = <ₑ)
-                vv′ = (is_slot(v) && !isa(fc, Nothing)) ? sterm(fc, vv) : vv
+                vv′ = (is_slot(v) && !isa(fₐ, Nothing)) ? sterm(fₐ, vv) : vv
             end
             if !isnothing(vv′)
 
@@ -473,18 +486,20 @@ end
 # normalize pattern
 # |   sub  | pat  | pat′
 # |--------|------|-------
-# sqrt ^   | sqrt
+# | sqrt   |  ^   | sqrt
 #  ^(1//2) | sqrt | ^(1//2)
 #  ^(1//3) | cbrt | ^(1//3)
 #  ^(-1)   |  /   | ^(-1)
 #  e^      | exp  | e^
 #  exp     | e^...| exp(...)
 #   /      | ^(-1)| /
+#   *      |  /   | *
 function normalize_pattern(pat, sub)
     iscall(sub) || return pat
     opₛ = Symbol(operation(sub))
     iscall(pat) || return pat # are there no op examples?
     opₚ = operation(pat)
+
     if (opₛ, opₚ) == (:sqrt, :^)
         u, v = arguments(pat)
         if eq_expr(v, :(1//2))
@@ -509,10 +524,17 @@ function normalize_pattern(pat, sub)
         end
     elseif (opₛ, opₚ) == (:^, :/)
         a, b = arguments(sub)
-        if b == -1
+        b′ = unwrap_const(b)
+        if isa(b′, Real) && b′ < 0 #unwrap_const(b) == -1
             u, v = arguments(pat)
-            if u == 1
-                return Expr(:call, :^, v, -1)
+            if unwrap_const(u) == 1
+                if is_operation(:^)(v)
+                    w,y = arguments(v)
+                    p = Expr(:call, :^, w, -1*unwrap_const(y))
+                else
+                    p = Expr(:call, :^, v, -1)
+                end
+                return p
             end
         end
     elseif (opₛ, opₚ) == (:^, :exp)
@@ -531,6 +553,9 @@ function normalize_pattern(pat, sub)
         if eq_expr(v, :(-1))
             return Expr(:call, :/, 1, u)
         end
+    elseif (opₛ, opₚ) == (:*, :/)
+        u, v = arguments(pat)
+        return Expr(:call, :*, u, _invert_expr(v))
     end
     return pat
 end
@@ -591,9 +616,11 @@ function clear_defslots(ss, p, fₐ, θ)
     for inds′ = powerset(1:length(inds))
         ps′, σ′ = set_defslots(ps, opₚ, inds, inds′)
         p′ = pterm(opₚ, ps′)
-
         θ′ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
-
+        # might need to adjust fₐ
+        if opₚ == :^ && operation(p′) != :^
+            fₐ = nothing
+        end
         itr = match_one_to_one(ss, p′, fₐ, θ′)
         (isnothing(itr) || isempty(itr)) && continue
         length(inds′) < length(inds) && return itr # avoid all defslots?
