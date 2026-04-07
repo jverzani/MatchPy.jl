@@ -1,22 +1,25 @@
 # MatchPy.jl
 
-This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as `MatchPy`.
+This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as MatchPy.
 
-This implementation only depends on the lightweight `TermInterface` package and the `Combinatorics` package.
+This implementation only depends on the lightweight `TermInterface` and `Combinatorics` packages.
 
-This algorithm finds all matches of a pattern employing wildcards against a subject. The patterns are specified with Julia expressions. Subjects can be expressions or perhaps other symbolic representations that satisfy the `TermInterface` specification.
+This algorithm finds all matches of a pattern employing wildcards against a subject. More formally, a substitution, s, is an associative area mapping the wildcards in a pattern against terms in the subject with the property that `s(pat) = sub`, where `s(pat)` rewrites the pattern by substituting in the matched values.
+
+Patterns are specified with Julia expressions. Subjects can be expressions or perhaps other symbolic representations that satisfy the `TermInterface` specification.
+
 
 ## Interface
 
-Nothing is exported, so all methods must be qualified.
+Nothing is exported from this package; all methods must be qualified.
 
-The primary method is `_eachmatch(pattern, subject)` which returns an iterator of matches.
+The primary method is `_eachmatch(pattern, subject)` which returns an iterator of matches, typically in the form of a unrealized generator.
 
 The `MatchPy._match(pattern, subject)` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
 
-The `MatchPy._rewrite(symtype, match, template)` method replaces matches of a pattern in another expression.
+The `MatchPy._rewrite(symtype, match, pat => rhs)` method replaces matches of a pattern in another expression, `rhs`.
 
-The `MatchPy._replace(expr, pat=>rhs, ...)` method walks through an expression, and can be used to replace parts of an expression with other parts.
+The `MatchPy._replace(expr, pat => rhs, ...)` method walks through an expression, and can be used to replace parts of an expression with other parts.
 
 ### Examples
 

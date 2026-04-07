@@ -208,7 +208,20 @@ function _replace_arguments(T, ex, u, v)
 
     # peel off
     op, args = operation(ex), arguments(ex)
-    args′ = _replace_arguments.((T,), args, (u,), (v,))
+    args′ = [_replace_arguments(T, a, u, v) for a ∈ args]
     return sterm(T, op, args′)
+
+end
+
+# this isn't quite the same
+function __replace_arguments(T, ex, u, v)
+    iscall(ex) || return (ex == u ? v : ex)
+
+    postwalk(ex, T) do x
+        σ = _match(u, x) # sigma is nothing, (), or a substitution
+        isnothing(σ) && return x
+        isempty(σ) && return v
+        return _rewrite(T, σ, v)
+    end
 
 end
