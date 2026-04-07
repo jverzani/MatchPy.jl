@@ -3,6 +3,8 @@
 # These may need extensions to use with other packages; eg cf replace.jl
 
 # if x is a wrapped constant number, unwrap it. Otherwise return x
+# Might need call like
+# MatchPy.unwrap_const(x::Basic) = SymEngine.unwrap_const(x)
 unwrap_const(x::Any) = _unwrap_const(x)
 
 
@@ -31,7 +33,7 @@ _isnumber(x::Expr) = !(_ismatch(x, !_isnumber))
 # when there is no match, `nothing` is used
 # an empty container of matches indicates no matches
 
-∅ = ()
+const ∅ = ()
 const MatchDict = Base.ImmutableDict{Symbol, Any}
 
 match_dict() = MatchDict()
@@ -115,6 +117,8 @@ end
 # symbolic type
 
 # to pass to maketerm (sterm)
+# Might want to do something like
+# MatchPy.symtype(::SymEngine.Basic) = SymEngine.Basic
 symtype(::Real) = Expr
 symtype(::Symbol) = Expr
 symtype(::Expr) = Expr
@@ -302,14 +306,3 @@ function get_predicate(x::Expr)
         x.args[2]
     end
 end
-
-
-
-
-# RENAME?
-#_free_symbols(::Any) = Expr[]
-#function _free_symbols(x::Expr)
-#    is_𝑋(x) && return [varname(x)]
-#    iscall(x) || return Expr[]
-#    unique(vcat(_free_symbols.(arguments(x))...))
-#end

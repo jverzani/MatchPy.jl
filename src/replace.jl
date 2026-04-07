@@ -18,8 +18,6 @@ function _match(pat::Union{Symbol, Expr}, sub)
     first(σ)
 end
 
-
-
 # T is symbolic type (Expr, ...) passed to sterm in walk
 # rhs an Expr, Number, Symbol
 # XXX This is an issue and not general enough
@@ -37,8 +35,6 @@ function _rewrite(T, σ::MatchDict, rhs)
         end
     end
 end
-
-
 
 ## --- walk over expression, but return symtype of T
 function walk(T, ex, inner, outer)

@@ -1,4 +1,3 @@
-
 #=
 Implement algorithm, through Ch. 3, of of matchpy paper:
 
@@ -13,11 +12,8 @@ We use expressions to indicate patterns with wildcards specified as:
 
 Where:
 * all wildcard variables need unique `varname`s
-# ✓ goal is rewrite rule to handle :(*(~a, ~~x) + *(~b, ~~x)) => :((~a+~b) * *(~~x...))
-# ✓ functions take a container of σs and either reduce (filter) or build upon (product
 
-
-In paper:
+Notation of paper:
 𝐹 function heads
 𝑋 variables: regular, [wild, star, plus]
 Symbolic objects split into

@@ -1,9 +1,9 @@
-const ϟ = nothing
+const ϟ = nothing # match paper notation
 
 # exact syntax tree up to wildcards
 # s is subject
 # p is pattern; slot variables only/guards allowed/no defslots
-# return nothing (ϟ) or a dictionary of matches
+# return nothing (ϟ) or a dictionary of all matched wildcard variables
 function syntactic_match(s, p, σ = match_dict())
     if !has_𝑋(p)
         return isequal(unwrap_const(s), unwrap_const(p)) ? σ :  ϟ
@@ -41,6 +41,10 @@ end
 # if argument, `a`, matches via `is_match` replace with `f(a)`
 function map_matched(ex, is_match, f)
     T = symtype(ex)
+    map_matched(T, ex, is_match, f)
+end
+
+function map_matched(T, ex, is_match, f)
     if !iscall(ex)
         return is_match(ex) ? f(ex) : ex
     else
@@ -50,7 +54,6 @@ function map_matched(ex, is_match, f)
         return sterm(T, operation(ex), children)
     end
 end
-
 
 # does predicate match an argument in the expression
 ## use
@@ -65,11 +68,16 @@ end
 
 # if expression operation, `op`, matches via `is_match` replace with `f(op)`
 function map_matched_head(ex, is_match, f)
+    T = symtype(ex)
+    map_matched_head(T, ex, is_match, f)
+end
+
+function map_matched_head(T, ex, is_match, f)
     !iscall(ex) && return ex
     op = operation(ex)
     is_match(op) && (op = f(op))
     args′ = map_matched_head.(arguments(ex), is_match, f)
-    return sterm(symtype(ex), op, args′)
+    return sterm(T, op, args′)
 end
 
 # does predicate match an operation in the expression
