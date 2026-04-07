@@ -145,6 +145,9 @@ end
         (pat = :(fₘ(~x)),
          sub = :(fₘ(a,b,c)),
          len = 0),
+        (pat = :(fₘ(~x, ~y)),
+         sub = :(fₘ(a, b)),
+         len = 2),
 
         # multiple
         (pat = :(f(~~~x, ~~~y)),
@@ -185,6 +188,36 @@ end
          sub = :(sin(2x)),
          len = 2),
 
+        # function head
+        (pat = :((~F)(~x, ~y)),
+         sub = :(g(a, b)),
+         len = 1),
+        (pat = :((~F)(~x, ~~y)),
+         sub = :(g(a, b,c)),
+         len = 1),
+
+        # integral matches from SymbolicIntegration.jl rules
+        (pat = :(∫((~(!c) + ~(!d) * ~x) ^ ~(!m) * sin(~(!e) + (~(!f) * ~x) / 2) ^ 2, ~x)),
+         sub = :(∫((a + b*y)^2 * sin(c + d*y/2)^2, y)),
+         len = 1),
+        (pat = :(∫((~!u)*((~!a)*(~x)^(~n))^(~m),(~x)) ),
+         sub = :(∫(a*(x^b)^c ,x)),
+         len = 1),
+        (pat = :(∫((~!u)*((~!c)*((~!d)*((~!a) + (~!b)* (~x))^(~n))^(~q))^(~p),(~x))),
+         sub = :(∫((u)*((c)*((d)*((a) + (b)* (x))^(n))^(q))^(p),(x))),
+        len = 1),
+        (pat = :(∫((~!u)*((~!c)*((~!d)*((~!a) + (~!b)* (~x))^(~n))^(~q))^(~p),(~x))),
+         sub = :(∫(    (    ((d)*((a) + (b)* (x))^(n))^(q))^(p),(x))),
+        len = 1),
+        (pat = :(∫((~!u)*((~!c)*((~!d)*((~!a) + (~!b)* (~x))^(~n))^(~q))^(~p),(~x))),
+         sub = :(∫(    (    ((d)*((a) +      (x))^(n))^(q))^(p),(x))),
+         len = 1),
+        (pat = :(∫(~(!a) + ~(!b) * ~x, ~x)),
+         sub = sub = :(∫((a + x),x)),
+         len = 1),
+        (pat = :(∫((~!u)*((~!e)*((~!a) + (~!b)*(~x)^(~!n))*((~c) + (~!d)*(~x)^(~!n)))^(~p),(~x))),
+         sub = :(∫((u)*((e)*((a) + (b)*(x)^(n))*((c) + (d)*(x)^(n)))^(p),(x))),
+         len = 2)
     ]
 
     for (i,(;pat, sub, len)) ∈ enumerate(ts)
@@ -251,27 +284,34 @@ end
 
 end
 
-@testset "replace head" begin
-    # replace operation
-    ex = :(log(1 + x^2) + log(1 + x^3))
-    rule = log=>log1p
-    @test _replace(ex, rule) == :(log1p(1 + x ^ 2) + log1p(1 + x ^ 3))
+@testset "_rewrite" begin
+    σ = MatchPy.match_dict(:x=>:x, :y=>1, :z=>[1,2,3], :w => [1,:(x^2)])
 
-    ex = :(f(a,a,b))
-    rule = :(f(~~x)) => :(g(~~x))
-    u = _replace(ex, rule)
-    @test operation(u) == :g # :(g(Any[:a, :a, :b]))
+    @test MatchPy._rewrite(Expr, σ, :(sin(~x))) == :(sin(x))
+    @test MatchPy._rewrite(Expr, σ, :(~y + ~x)) == :(1 + x)
+    @test MatchPy._rewrite(Expr, σ, :(~x * cos((~x)^2))) == :(x*cos(x^2))
+
+    # splatting is handled in a kludgy manner
+    @test eval(MatchPy._rewrite(Expr, σ, :(+(~~z...)))) == 6
+    @test eval(MatchPy._rewrite(Expr, σ, :(splat(+)(~~z)))) == 6
+
+    # that works, but this fails --- the substitution is an expression...
+    ex = :(log(1 + x^2))
+    σ = MatchPy._match(:(log(1+(~~~w))), ex)
+    x = exp(1) - 1
+    @test_broken eval(_rewrite(Expr, σ, :(log1p(+(~~~w...))))) ≈ 1.0
+
 end
 
-@testset "replace" begin
+
+@testset "_replace" begin
 
     # replace parts
     ex = :(log(1 + x^2) + log(1 + x^3))
     rule = :(log(1+(~x))) => :(log1p(~x))
     u = _replace(ex, rule)
     @test u == :(log1p(x^2) + log1p(x^3))
-
-    #@test _replace(ex, :(log(1+(~~~x))) => :(log1p((~~~x)))) == log1p(x ^ 2) + log1p(x ^ 3)
+    @test_broken _replace(ex, :(log(1+(~~~x))) => :(log1p(+(~~~x...)))) == :(log1p(x ^ 2) + log1p(x ^ 3))
 
     ex = :(log(sin(x)) + tan(sin(x^2)))
     rule = sin => cos
@@ -309,7 +349,19 @@ end
     @test _replace(:(sin(a)), :(sin((~x))) => 2) == 2
 end
 
-@testset "replace exact" begin
+@testset "_replace head" begin
+    # replace operation
+    ex = :(log(1 + x^2) + log(1 + x^3))
+    rule = log=>log1p
+    @test _replace(ex, rule) == :(log1p(1 + x ^ 2) + log1p(1 + x ^ 3))
+
+    ex = :(f(a,a,b))
+    rule = :(f(~~x)) => :(g(~~x))
+    u = _replace(ex, rule)
+    @test operation(u) == :g # :(g(Any[:a, :a, :b]))
+end
+
+@testset "_replace exact" begin
     # no wild card
     ex = :(x^2 + x^4)
     @test _replace(ex, :(x^2) => :x) == :(x + x^4)

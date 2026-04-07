@@ -3,6 +3,8 @@
 # These may need extensions to use with other packages; eg cf replace.jl
 
 # if x is a wrapped constant number, unwrap it. Otherwise return x
+# Might need call like
+# MatchPy.unwrap_const(x::Basic) = SymEngine.unwrap_const(x)
 unwrap_const(x::Any) = _unwrap_const(x)
 
 
@@ -27,10 +29,12 @@ _isnumber(x::Expr) = !(_ismatch(x, !_isnumber))
 
 ## ----- substitution mapping stored in a dictionary -----
 # A substitution is a collection of pairs 𝑋 -> 𝐺
-# an empty dictionary is a match, FAIL_DICT is indicator of a failed match
+# an empty dictionary is a match
+# when there is no match, `nothing` is used
+# an empty container of matches indicates no matches
+
+const ∅ = ()
 const MatchDict = Base.ImmutableDict{Symbol, Any}
-FAIL_DICT = MatchDict(:_fail, 0)
-∅ = ()
 
 match_dict() = MatchDict()
 
@@ -43,7 +47,7 @@ function match_dict(σ::MatchDict, kvs::Pair...)
     for (k,v) ∈ kvs
         v = isa(v,Number) ? _unwrap_const(v) : v
         if haskey(σ, k)
-            σ[k] != v && error("repeated key with different value: $k => $v ($(σ[k]))")#return FAIL_DICT #error("repeated key with different value: $k => $v ($(σ[k]))")
+            σ[k] != v && error("repeated key with different value: $k => $v ($(σ[k]))")
         else
             σ = MatchDict(σ, k, v)
         end
@@ -53,7 +57,6 @@ end
 
 #  σ △ σ′ (\bigtriangleup) for every x in the intersection of the domains has same value
 function iscompatible(σ::MatchDict, σ′::MatchDict)
-    (σ == FAIL_DICT || σ′ == FAIL_DICT) && return false
     isempty(σ) && return true
     isempty(σ′) && return true
     for k in keys(σ)
@@ -87,18 +90,6 @@ _isone(x) = isequal(x, 1)
 _groupby(pred, t) = (t = filter(pred,t), f=filter(!pred, t))
 
 
-# to evaluate a guard. (Where is the question?)
-function _evalguard(pred, data)
-    try
-        Base.invokelatest(eval(pred), _unwrap_const(data))
-    catch err
-        try
-            return invokelatest(Main.eval(pred), _unwrap_const(data))
-        catch err
-            false
-        end
-    end
-end
 
 ## Expression related methods
 _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
@@ -109,27 +100,6 @@ _is_operation(op) = ex -> iscall(ex) && operation(ex) ∈ (op, Symbol(op))
 
 eq_expr(a::Any, b::Any) = isequal(unwrap_const(a), unwrap_const(b))
 eq_expr(a::Expr, b::Expr) = !isnothing(syntactic_match(unwrap_const(a), unwrap_const(b)))
-#=
-# symbol
-#eq_expr(a::Union{Expr, Number}, b::Symbol) = false
-#eq_expr(a::Symbol, b::Union{Expr, Number}) = false
-#eq_expr(a::Irrational, b::Symbol) = isequal(Symbol(a), b)
-#eq_expr(a::Symbol, b::Irrational) = isequal(a, Symbol(b))
-#eq_expr(b::Symbol, a::Number) = false
-eq_expr(a::Expr, b::Number) = eq_expr(b,a)
-
-function eq_expr(a::Number, b::Expr)
-    b′ = unwrap_const(b)
-    isa(b′, Number) && return issequal(a,b′)
-    return false
-    #=
-    is_operation(://)(b) || return false
-    a1,a2 = numerator(a), denominator(a)
-    _, b1,b2 = b.args
-    eq_expr(a1, b1) && eq_expr(a2, b2)
-    =#
-end
-=#
 
 
 # create a term for a pattern (pterm) or a subject (sterm)
@@ -147,6 +117,8 @@ end
 # symbolic type
 
 # to pass to maketerm (sterm)
+# Might want to do something like
+# MatchPy.symtype(::SymEngine.Basic) = SymEngine.Basic
 symtype(::Real) = Expr
 symtype(::Symbol) = Expr
 symtype(::Expr) = Expr
@@ -155,34 +127,28 @@ symtype(::T) where T = T
 function sterm(op, args)
     S = symtype(first(args))
     sterm(S, op, args)
-    #=
-    _isexpr = S == Expr
-    if _isexpr
-        !isa(op, Symbol) && (op = nameof(op))
-    else
-        isa(op, Symbol) && (op = eval(op))
-    end
-    _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
-    =#
 end
 
-
+# construct term of abstract type S from op and args
 function sterm(S, op, args)
-    _isexpr = S == Expr
-    if _isexpr
-        !isa(op, Symbol) && (op = nameof(op))
-    else
-        if isa(op, Symbol)
-            for M ∈ (@__MODULE__, Main, Base)
-                if isdefined(M, op)
-                    op = M.eval(op)
-                    break
-                end
-            end
-            isa(op, Symbol) && (op = eval(op))
-        end
+    if S == Expr
+        !isa(op, Union{Expr, Symbol}) && (op = nameof(op))
+        return pterm(op, args)
     end
-    _isexpr ? pterm(op, args) : maketerm(S, op, args, nothing)
+
+    if isa(op, Symbol)
+        for M ∈ (@__MODULE__, Main, Base)
+            if isdefined(M, op)
+                op = M.eval(op)
+                break
+            end
+        end
+        isa(op, Symbol) && (op = eval(op))
+    elseif isa(op, Expr)
+        op = eval(op)
+    end
+
+    maketerm(S, op, args, nothing)
 end
 
 
@@ -207,7 +173,6 @@ end
 # ----- predicates
 _is_rational(x) = isa(_unwrap_const(x), Rational)
 
-
 # can override, say with :Symbol
 iscommutative(op) = op ∈ (:+, :*, +, *)
 isassociative(op) = op ∈ (:+, :*, +, *)
@@ -228,8 +193,8 @@ is_plus(x::Any) = false
 is_op(x::Any) = false
 
 # Expr
-is_𝑋(x::Expr) = (iscall(x) && first(x.args) === :(~))  ||
-    (isexpr(x) && head(x) != :... && is_𝑋(first(x.args)))
+is_𝑋(x::Expr) = (iscall(x) && operation(x) === :(~))  ||
+    ((!iscall(x) && isexpr(x)) && head(x) != :... && is_𝑋(first(x.args)))
 
 function has_𝑋(x::Expr)
     is_𝑋(x) && return true
@@ -251,7 +216,6 @@ function is_defslot(x::Expr)
     _, arg = x.args
     is_operation(:(!))(arg) && return true
 
-
     return false
 end
 
@@ -268,7 +232,7 @@ function is_segment(x::Expr)
     h,x = x.args
     is_𝑋(h) && return false # an op
     is_𝑋(x) || return false # second is ~
-    _,x = x.args
+    _, x = x.args
     is_𝑋(x) && return false
     return true
 end
@@ -288,15 +252,6 @@ function is_op(x::Expr)
     is_𝑋(x) && iscall(x) && is_𝑋(operation(x))
 end
 
-# Does wildcard have a predicate?
-has_predicate(x::Symbol)::Bool = false
-function has_predicate(x::Expr)::Bool
-    if x.args[1] ∈ (:~, :!)
-        has_predicate(x.args[2])
-    else
-        length(x.args) == 2 && x.head==:(::)
-    end
-end
 
 ## ------
 const defslot_op_map = Dict(:+ => 0, :* => 1, :^ => 1, :/ => 1)
@@ -312,6 +267,36 @@ function varname(x::Expr)
     end
 end
 
+## -- work with guards
+# return true *if* either var has no predicate or
+# predicate(data) is true
+# use like pass_any_guard(var, data) || return ∅
+function pass_any_guard(var, data)
+    !has_predicate(var) && return true
+
+    # to evaluate a guard. (Where is the question?)
+    pred = get_predicate(var)
+    try
+        Base.invokelatest(eval(pred), _unwrap_const(data))
+    catch err
+        try
+            return invokelatest(Main.eval(pred), _unwrap_const(data))
+        catch err
+            false
+        end
+    end
+end
+
+# Does wildcard have a predicate?
+has_predicate(x::Symbol)::Bool = false
+function has_predicate(x::Expr)::Bool
+    if x.args[1] ∈ (:~, :!)
+        has_predicate(x.args[2])
+    else
+        length(x.args) == 2 && x.head==:(::)
+    end
+end
+
 # get_predicate. Assumes user has called `has_predicate` and got TRUE
 get_predicate(x::Symbol) = :nothing
 function get_predicate(x::Expr)
@@ -321,11 +306,3 @@ function get_predicate(x::Expr)
         x.args[2]
     end
 end
-
-# RENAME?
-#_free_symbols(::Any) = Expr[]
-#function _free_symbols(x::Expr)
-#    is_𝑋(x) && return [varname(x)]
-#    iscall(x) || return Expr[]
-#    unique(vcat(_free_symbols.(arguments(x))...))
-#end

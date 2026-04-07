@@ -1,14 +1,6 @@
 # For dispatch
 ### ---- match, eachmatch, replace
 
-function _match(pat::Union{Symbol, Expr}, sub)
-    σs = _eachmatch(pat, sub)
-    σ = iterate(σs)
-    isnothing(σ) && return nothing
-    first(σ)
-end
-
-
 # return iterator of each possible match
 function _eachmatch(pat::Union{Symbol,Expr}, ex)
     if has_𝑋(pat)
@@ -19,38 +11,48 @@ function _eachmatch(pat::Union{Symbol,Expr}, ex)
     end
 end
 
-
-## --- walk over expression
-
-function walk(T, ex, inner, outer)
-    _hasoperation(ex) || return outer(ex)
-    ex′ = sterm(T, _head(ex), map(inner, _children(ex)))
-    outer(ex′)
+function _match(pat::Union{Symbol, Expr}, sub)
+    σs = _eachmatch(pat, sub)
+    σ = iterate(σs)
+    isnothing(σ) && return nothing
+    first(σ)
 end
-
-function postwalk(f, ex, T)
-    walk(T, ex, ex -> postwalk(f,ex, T), f)
-end
-prewalk(f, x, T)  = walk(T, f(x), x -> prewalk(f, x, T), identity)
-
-# utils to make more generic
-_hasoperation(ex) = !is_𝑋(ex) && (iscall(ex) || isexpr(ex))
-_children(ex) = iscall(ex) ? arguments(ex) : children(ex)
-_head(ex) = iscall(ex) ? operation(ex) : head(ex)
-
 
 # T is symbolic type (Expr, ...) passed to sterm in walk
 # rhs an Expr, Number, Symbol
+# XXX This is an issue and not general enough
 function _rewrite(T, σ::MatchDict, rhs)
     postwalk(rhs, T) do rhs
         if is_𝑋(rhs)
             var = varname(rhs)
-            haskey(σ, var) ? σ[var] : error("XXX no match  in σ for $var XXX $rhs $σ")
+            if haskey(σ, var)
+                return σ[var]
+            else
+                error("No match in $σ for $var from $rhs")
+            end
         else
             rhs
         end
     end
 end
+
+## --- walk over expression, but return symtype of T
+function walk(T, ex, inner, outer)
+    (!is_𝑋(ex) && (iscall(ex) || isexpr(ex))) || return outer(ex)
+    if isexpr(ex) && !iscall(ex)
+        ex′ = Expr(head(ex), map(inner, children(ex))...)
+    elseif isexpr(ex)
+        if T == Expr
+            ex′ = pterm(operation(ex),  map(inner, arguments(ex)); elide=false)
+        else
+            ex′ = sterm(T, operation(ex), map(inner, arguments(ex)))
+        end
+    end
+    outer(ex′)
+end
+
+postwalk(f, ex, T) = walk(T, ex,    x -> postwalk(f,x, T), f)
+prewalk(f, ex, T)  = walk(T, f(ex), x -> prewalk(f, x, T), identity)
 
 
 """
@@ -103,10 +105,10 @@ For symbolic expressions, we have:
 
 ```@repl replace
 julia> ex = cos(x)^2 + cos(x) + 1
-(cos(x) ^ 2) + cos(x) + 1
+1 + cos(x)^2 + cos(x)
 
 julia> _replace(ex, cos(x) => x)
-(x ^ 2) + x + 1
+1 + x + x^2
 ```
 
 Replacements occur only if an entire node in the expression tree is matched:
@@ -115,8 +117,8 @@ Replacements occur only if an entire node in the expression tree is matched:
 julia> u = 1 + x
 1 + x
 
-julia> replace(u + exp(-u), u => x^2)
-1 + x + exp(-x ^ 2)
+julia> _replace(u + exp(-u), u => x^2)
+1 + x + exp(-x^2)
 ```
 
 (As this addition has three terms, `1+x` is not a subtree in the expression tree.)
@@ -133,21 +135,21 @@ Wildcards have a naming convention:
 
 ```@repl replace
 julia> _replace(cos(pi + x^2), :(cos(pi + ~x)) => :(-cos(~x)))
--cos(x ^ 2)
+-cos(x^2)
 
 ```
 
 ```@repl replace
 julia> ex = log(sin(x)) + tan(sin(x^2))
-log(sin(x)) + tan(sin(x ^ 2))
+log(sin(x)) + tan(sin(x^2))
 
 julia> _replace(ex, :(sin(~x)) => :(tan((~x) / 2)))
-log(tan(x / 2)) + tan(tan((1/2) * x ^ 2)
+log(tan((1/2)*x)) + tan(tan((1/2)*x^2))
 
 julia> _replace(ex, :(sin(~x)) => :(~x))
-log(x) + tan(x ^ 2)
+log(x) + tan(x^2)
 
-julia> _replace(x*p, :((~x) * x) => :(~x) )
+julia> _replace(x*p, :((~x) * x) => :(~x))
 p
 ```
 
@@ -173,15 +175,19 @@ sin
             └─ 2       ...
 ```
 
-The command wildcard expression `:(cos(x + ~x))` looks at the part of the tree that has `cos` as a node, and the lone child is an expression with node `+` and child `x`. The `~x then matches `p + x^2`.
+In the `_replace` command, the  wildcard expression `:(cos(x + ~x))` looks at the part of the tree that has `cos` as a node, and the lone child is an expression with node `+` and child `x`. The `~x then matches `p + x^2`.
 
+```@repl replace
+julia> _replace(sin(x + x*log(x) + cos(x + p + x^2)), :(cos(x + ~x)) => :(sin(~x)))
+sin(x + x*log(x) + sin(p + x^2))
 
+```
 """
 function _replace(ex, uv::Pair)
     u,v = uv
 
     # Expr
-    isa(u, Expr) && return _replace_arguments(ex, u, v)
+    isa(u, Expr) && return _replace_arguments(symtype(ex), ex, u, v)
 
     # is u function replace head
     isa(u, Function) && return map_matched_head(ex, ==(Symbol(u)), _ -> v)
@@ -190,23 +196,11 @@ function _replace(ex, uv::Pair)
     return map_matched(ex, ==(u), _ -> v)
 end
 
-
-function _replace_arguments(ex::Expr, u, v)
-    __replace_arguments(ex, u, v)
-end
-function _replace_arguments(ex, u, v)
-    __replace_arguments(ex, u, v) #|> eval
-end
-
-# return Expression
-function __replace_arguments(ex, u, v)
-    T = symtype(ex)
-    __replace_arguments(T, ex, u, v)
-end
-
-function __replace_arguments(T, ex, u, v)
+function _replace_arguments(T, ex, u, v)
     iscall(ex) || return (ex == u ? v : ex)
+
     σ = _match(u, ex) # sigma is nothing, (), or a substitution
+
     if !isnothing(σ)
         σ == () && return v # no substitution
         return _rewrite(T, σ, v)
@@ -214,41 +208,20 @@ function __replace_arguments(T, ex, u, v)
 
     # peel off
     op, args = operation(ex), arguments(ex)
-    args′ = __replace_arguments.(args, (u,), (v,))
+    args′ = [_replace_arguments(T, a, u, v) for a ∈ args]
     return sterm(T, op, args′)
 
 end
 
-## ------
-# replace variables in rhs with values looked upin σ
-# return an Expr (or Symbol or literal number)
-# From SymbolicIntegration.jl
-function _rewrite(σ::MatchDict, rhs::Expr)
-    if !iscall(rhs)
-        if isexpr(rhs)
-            args = [_rewrite(σ, a) for a ∈ children(rhs)]
-            return Expr(head(rhs), args...)
-        else
-            return rhs
-        end
+# this isn't quite the same
+function __replace_arguments(T, ex, u, v)
+    iscall(ex) || return (ex == u ? v : ex)
+
+    postwalk(ex, T) do x
+        σ = _match(u, x) # sigma is nothing, (), or a substitution
+        isnothing(σ) && return x
+        isempty(σ) && return v
+        return _rewrite(T, σ, v)
     end
 
-    if is_𝑋(rhs)
-        var = varname(rhs)
-        if haskey(σ, var)
-            return σ[var]
-        else
-            error("No match found for variable $(var)") #it should never happen
-        end
-    end
-
-    # otherwise call recursively on arguments and then reconstruct expression
-    args = [_rewrite(σ, a) for a ∈  arguments(rhs)]
-    return pterm(operation(rhs), args; elide=false)
 end
-
-_rewrite(matches::MatchDict, rhs::Symbol) = rhs::Symbol
-_rewrite(matches::MatchDict, rhs::Real) = rhs::Real
-_rewrite(matches::MatchDict, rhs::String) = rhs::String
-_rewrite(matches::MatchDict, rhs::LineNumberNode) = nothing::Nothing
-_rewrite(matches::MatchDict, rhs::QuoteNode) = rhs::QuoteNode
