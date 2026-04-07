@@ -123,7 +123,7 @@ MatchPy._eachmatch(:(f(~~x, ~~y)), :(f(a,b,c))) |> collect
 
 That `+` is commutative, allows a segment variable to use a standard order for a match, which matches the order of no assumption on commutivity.
 
-Commutivity and associativity are checked by the internal functions `iscommutative` and `isassociative` which are passed the operation of the subject (not the pattern, though in these examples the distinction is not important). Unless overridden, any of `+`, `:+`, `*`, `:*` are assumed both associative and commutive.
+Commutivity and associativity are checked by the internal functions `iscommutative` and `isassociative` which are passed the operation of the subject (not the pattern, though in these examples the distinction is not important). Unless overridden, any of `+`, `:+`, `*`, `:*` are assumed both associative and commutative.
 
 We can see the difference here:
 
