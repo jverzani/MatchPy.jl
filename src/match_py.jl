@@ -33,7 +33,7 @@ t matches s if there is a match with σ(t) = s
 
 
 # θ [\theta]  is an iterable of substitutions;
-# returns an interable of substitutions
+# returns an iterable of substitutions
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     #@show :m11, ss, p, fₐ
     n = length(ss)

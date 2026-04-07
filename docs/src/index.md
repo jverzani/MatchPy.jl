@@ -10,13 +10,13 @@ This algorithm finds all matches of a pattern employing wildcards against a subj
 
 Nothing is exported, so all methods must be qualified.
 
-The primary method is `_eachmatch` which returns an iterator of matches.
+The primary method is `_eachmatch(pattern, subject)` which returns an iterator of matches.
 
-The `MatchPy._match` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
+The `MatchPy._match(pattern, subject)` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
 
-The `MatchPy._rewrite` method replaces matches of a pattern in another expression.
+The `MatchPy._rewrite(symtype, match, template)` method replaces matches of a pattern in another expression.
 
-The `MatchPy._replace` method walks through an expression, and can be used to replace parts of an expression with other parts.
+The `MatchPy._replace(expr, pat=>rhs, ...)` method walks through an expression, and can be used to replace parts of an expression with other parts.
 
 ### Examples
 
@@ -24,15 +24,25 @@ The `MatchPy._replace` method walks through an expression, and can be used to re
 
 ```@repl matchpy
 using MatchPy
-
-MatchPy._eachmatch(:(~x + ~y), :(a + b)) |> collect
+pat, sub = :(~x + ~y), :(a + b)
+MatchPy._eachmatch(pat, sub) |> collect
 ```
 
 Single match
 
 ```@repl matchpy
-MatchPy._match(:(~x + ~y), :(a + b))
+MatchPy._match(pat, sub)
 ```
+
+Rewrite
+
+```@repl matchpy
+pat, sub = :(~x*tanh(exp(~x))), :(a^2 * tanh(exp(a^2)))
+m = MatchPy._match(pat, sub)
+MatchPy._rewrite(Expr, m, pat)
+```
+
+(It should be an invariant that "`pat[m]`" returns `sub`.)
 
 Replace:
 
@@ -60,7 +70,7 @@ Patterns are specified with wildcards of which there is a variety. We follow the
 
 * Wildcards may have predicates or *guards* attached to them through the notation `:(~x::predicate)`. A match only occurs when the accompanying predicate is `true` for the proposed value.
 
-* A function head can be matched with a slot variable. That is the pattern `:((~F)(~x))` will match `:(sin(x))` with `:F => :sin` and `:x => x`
+* A function head can be matched with a slot variable. That is, the pattern `:((~F)(~x))` will match `:(sin(x))` with `:F => :sin` and `:x => x`
 
 
 
