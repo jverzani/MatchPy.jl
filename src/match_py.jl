@@ -11,20 +11,19 @@ We use expressions to indicate patterns with wildcards specified as:
 * `~~~x`, `~~~x::pred` --- 1 or more matches, , match holds a container
 
 Where:
-* all wildcard variables need unique `varname`s
+* all wildcard variables need unique `varname`s (no ~x and ~~x in same pattern)
 
 Notation of paper:
 𝐹 function heads
-𝑋 variables: regular, [wild, star, plus]
 Symbolic objects split into
 𝐹₀ 0-arity expressions
 𝐿 all symbolic variables
-𝑋 wildcard expressions which split into
+𝑋 wildcard expressions which split into -- is_𝑋
 Xʳᵉᵍᵘˡᵃʳ, regular
 Xᵖˡᵘˢ, plus variables
 Xˢᵗᵃʳ, star variables
 
-t matches s if there is a match with σ(t) = s
+t matches s if there is a substitution with σ(t) = s
 =#
 
 
@@ -226,6 +225,10 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     n == 0 && return ((ss, ps, σ), )
     n ≤ length(ss) || return nothing
 
+    # XXX could tighten this up, does some excess checking
+    # look at example on p20
+    # (pat, sub) = (:(g(a, ~x) + g(~x, ~y) + g(~(~z))), :(g(a, b) + g(b, a) + g(a, c)))
+    # should write using prewalk traversal
     i = permutations(1:length(ss), n)
 
     λ = inds -> begin
@@ -254,7 +257,8 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
                     Symbol(opₛ) == opₚ || return nothing
                 end
             end
-            θ′ = match_one_to_one([s], p, opₛ,  θ′) # what op?
+
+            θ′ = match_one_to_one([s], p, fₐ,  θ′) # what op?
 
             isempty(θ′) && return nothing
         end
@@ -480,16 +484,16 @@ end
 
 
 # normalize pattern
-# |   sub  | pat  | pat′
-# |--------|------|-------
-# | sqrt   |  ^   | sqrt
-#  ^(1//2) | sqrt | ^(1//2)
-#  ^(1//3) | cbrt | ^(1//3)
-#  ^(-1)   |  /   | ^(-1)
-#  e^      | exp  | e^
-#  exp     | e^...| exp(...)
-#   /      | ^(-1)| /
-#   *      |  /   | *
+# |   sub   | pat  | pat′
+# |---------|------|-------
+# | sqrt    |  ^   | sqrt
+# | ^(1//2) | sqrt | ^(1//2)
+# | ^(1//3) | cbrt | ^(1//3)
+# | ^(-1)   |  /   | ^(-1)
+# | e^      | exp  | e^
+# | exp     | e^...| exp(...)
+# |  /      | ^(-1)| /
+# |  *      |  /   | *
 function normalize_pattern(pat, sub)
     iscall(sub) || return pat
     opₛ = Symbol(operation(sub))

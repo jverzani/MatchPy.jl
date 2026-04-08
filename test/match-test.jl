@@ -326,10 +326,9 @@ end
     rule = :(sin(~x)) => :(~x)
     @test _replace(ex, rule) == :(log(x) + tan(x^2))
 
-    ex = :((1 + x^2)^2) # outer one is peeled off first by _replace
+    ex = :((1 + x^2)^2) # postwalk sees inner x^2 first and replaces, so rule applies twice
     rule = :((~x)^2) => :((~x)^4)
-    @test _replace(ex, rule) == :((1 + (x ^ 2)) ^ 4)
-    @test foldl(_replace, (rule, rule); init=ex) == :((1 + (x ^ 4)) ^ 4)
+    @test _replace(ex, rule) == :((1 + (x ^ 4)) ^ 4)
 
 
     ex = :(sin(x + x*log(x) + cos(p + x + p + x^2)))

@@ -4,7 +4,7 @@ This package provides an implementation of the algorithm of [Non-linear Associat
 
 This implementation only depends on the lightweight `TermInterface` and `Combinatorics` packages.
 
-This algorithm finds all matches of a pattern employing wildcards against a subject. More formally, a substitution, s, is an associative area mapping the wildcards in a pattern against terms in the subject with the property that `s(pat) = sub`, where `s(pat)` rewrites the pattern by substituting in the matched values.
+This algorithm finds all matches of a pattern employing wildcards against a subject. More formally, a substitution, s, is a key/value structure mapping the wildcards in a pattern against terms in the subject with the expected property that `s(pat) = sub`, where `s(pat)` rewrites the pattern by substituting in the matched values.
 
 Patterns are specified with Julia expressions. Subjects can be expressions or perhaps other symbolic representations that satisfy the `TermInterface` specification.
 
@@ -13,13 +13,13 @@ Patterns are specified with Julia expressions. Subjects can be expressions or pe
 
 Nothing is exported from this package; all methods must be qualified.
 
-The primary method is `_eachmatch(pattern, subject)` which returns an iterator of matches, typically in the form of a unrealized generator.
+The primary method is `_eachmatch(pattern, subject)` which returns an iterator of substitutions, typically in the form of an unrealized generator.
 
-The `MatchPy._match(pattern, subject)` method chooses the first of the possible matches given by `_eachmatch`, returning `nothing` if there are no matches.
+The `MatchPy._match(pattern, subject)` method chooses the first of the possible substitutions given by `_eachmatch`, returning `nothing` if there are no matches.
 
-The `MatchPy._rewrite(symtype, match, pat => rhs)` method replaces matches of a pattern in another expression, `rhs`.
+The `MatchPy._rewrite(symtype, σ, rhs)` method replaces wildcards in the `rhs` template with values in the substitution, `σ`.
 
-The `MatchPy._replace(expr, pat => rhs, ...)` method walks through an expression, and can be used to replace parts of an expression with other parts.
+The `MatchPy._replace(expr, pat => rhs, ...)` method walks (post-order traversal) through an expression, and can be used to replace parts of an expression with other parts.
 
 ### Examples
 
@@ -31,21 +31,21 @@ pat, sub = :(~x + ~y), :(a + b)
 MatchPy._eachmatch(pat, sub) |> collect
 ```
 
-Single match
+Single match:
 
 ```@repl matchpy
 MatchPy._match(pat, sub)
 ```
 
-Rewrite
+Rewrite:
 
 ```@repl matchpy
 pat, sub = :(~x*tanh(exp(~x))), :(a^2 * tanh(exp(a^2)))
-m = MatchPy._match(pat, sub)
-MatchPy._rewrite(Expr, m, pat)
+σ = MatchPy._match(pat, sub)
+MatchPy._rewrite(Expr, σ, pat)
 ```
 
-(It should be an invariant that "`pat[m]`" returns `sub`.)
+(It should be an invariant that substituting the identified match `σ` into `pat` (with `_rewrite`) returns `sub`, when the wild cards are slot variables.)
 
 Replace:
 
@@ -53,11 +53,13 @@ Replace:
 MatchPy._replace(:(cos(2x)^2 + sin(2x)^2), :(sin(~x)^2 + cos(~x)^2) => 1)
 ```
 
-The `_simplify` function builds on the above to perform some common simplifications:
+Simplify:
 
 ```@repl matchpy
 MatchPy._simplify(:(cos(2x)^2 + sin(2x)^2))
 ```
+
+The `_simplify` function builds on the above to perform some common simplifications.
 
 ## Wildcards
 
@@ -79,7 +81,7 @@ Patterns are specified with wildcards of which there is a variety. We follow the
 
 ### Examples
 
-* Use of default slots
+* Use of default slots:
 
 ```@repl matchpy
 r = :(~!a * sin(~x)^2 + ~!a * cos(~x)^2) => :(~!a)
@@ -89,7 +91,7 @@ MatchPy._replace(:(2cos(2x)^2 + 2sin(2x)^2), r)
 MatchPy._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x))) |> collect
 ```
 
-* Use of a predicate function to filter matches
+* Use of a predicate function to filter matches:
 
 ```@repl matchpy
 MatchPy._eachmatch(:(~!a * sin(~!b *~x::(!Base.Fix2(isa, Number)) + ~!c)^(~!m)), :(sin(2x))) |> collect
@@ -97,7 +99,7 @@ MatchPy._eachmatch(:(~!a * sin(~!b *~x::(!Base.Fix2(isa, Number)) + ~!c)^(~!m)),
 
 (There are scoping issues with predicates to iron out, due to the use of `eval`.)
 
-* Use of a segment variable
+* Use of a segment variable:
 
 ```@repl matchpy
 MatchPy._eachmatch(:(~x + ~~y), :(a + b)) |> collect
@@ -105,7 +107,7 @@ MatchPy._eachmatch(:(~x + ~~y), :(a + b)) |> collect
 
 Notice that `+` is associative, so the slot variable `~x` may match one or more arguments. In the case there is more than one, the function is called on them. This is why the first match has `:x => :(a+b)`. A match for a segment should always return a container.
 
-* Plus variables must have aleast one match
+* Plus variables must have aleast one match:
 
 ```@repl matchpy
 MatchPy._eachmatch(:(~x + ~~~y), :(a + b)) |> collect
@@ -116,8 +118,6 @@ This same result can also be achieved with an appropriate predicate:
 ```@repl matchpy
 MatchPy._eachmatch(:(~x + ~~y::(!isempty)), :(a + b)) |> collect
 ```
-
-
 
 For segment variables, MatchPy will try to identify all possibilities. Further, MatchPy has checks for *associativity* and *commutativity* of the operation and will call the operation on the identified associative matches.
 
