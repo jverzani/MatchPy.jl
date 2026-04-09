@@ -28,12 +28,12 @@ t matches s if there is a substitution with σ(t) = s
 
 
 # θ [\theta]  is an iterable of substitutions;
-# returns an iterable of substitutions
+# returns an iterable of substitutions, possibly empty
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     #@show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)              # constant expression/symbol/number
-        # match if p == ss(1)
+        # match if p == ss[1]
         n == 1 && eq_expr(only(ss), p) && return θ
         return ∅
 
@@ -70,8 +70,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
             σ′ = match_dict(varname(opₚ) => opₛ)
             θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
         else
-            # can't have defslot in p at this level
-            Symbol(opₛ) == opₚ || return ()
+            Symbol(opₛ) == opₚ || return ∅ # can't have defslot in p at this level
         end
         ss, ps = arguments(s), arguments(p)
         fₐ′ = isassociative(opₛ) ? opₛ : nothing
@@ -217,7 +216,6 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
 
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
-
     ss, ps = out
     ps′, ps′′ = _groupby(!is_𝑋, ps)
 
@@ -225,55 +223,75 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     n == 0 && return ((ss, ps, σ), )
     n ≤ length(ss) || return nothing
 
-    # XXX Tighten this up, does some excess checking XXX
-    # look at example on p20
-    # (pat, sub) = (:(g(a, ~x) + g(~x, ~y) + g(~(~z))), :(g(a, b) + g(b, a) + g(a, c)))
-    # with `permutations`, we consider all of paths 123,132,213,231,312,321 in sequence,
-    # so we end up checking
-    # 123,13⋅,2⋅⋅, 2⋅⋅, 31⋅, 32⋅ -- that is 11 checks
-    # where as we only need to check
-    # 1[23,3⋯], 2[⋅⋅,⋅⋅], 3[1⋅,2⋅] which is only 8 checks were we to walk in pre-order fashion
-    i = permutations(1:length(ss), n)
+    # we want to match over same size so we first pick combinations of
+    # size n, ss′, and then use a stack-based approach to loop over
+    # permutations of ss′ allowing for early termination if no
+    # matches are possible.
+    # (basic algorithm, with errors fixed, from claude on depth-first stack approach to compute
+    # permutations)
+    λ = (ss′, ps′, σ, ss) -> begin
+        result = Any[]
+        stack = Any[([], ss′, [σ])]
+        while !isempty(stack)
+            current, remaining, θ = pop!(stack)
+            j = length(current)
+            if j > 0
 
-    λ = inds -> begin
-        ss′= ss[inds]
-        θ′ = (σ,)
-        for (s,p) ∈ zip(ss′, ps′)
-            p, θ′ = check_nonmatching_defslot(s, p, θ′)
-            p = normalize_pattern(p,s) # rewrite pattern if needed
-            # normalize might make p a non call, if so ...
-            if is_𝑋(p)
-                # predicate?
-                σ′ = match_dict(varname(p) => s)
-                θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
-                continue
-            end
+                p, s = ps′[j], current[end]
+                p, θ = check_nonmatching_defslot(s, p, θ)
+                p = normalize_pattern(p,s) # rewrite pattern if needed
 
-            opₚ = operation(p) # s may not be a call (defslots)
-            opₛ = nothing
-            if iscall(s)
-                if is_𝑋(opₚ) # check for variable function head
-                    opₛ = operation(s)
-                    σ′ = match_dict(varname(opₚ) => opₛ)
-                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
-                elseif !any(is_defslot, arguments(p))
-                    opₛ = operation(s)
-                    Symbol(opₛ) == opₚ || return nothing
+                # normalize might make p a non call, if so ...
+                if is_𝑋(p)
+                    pass_any_guard(p, s) || continue
+                    σ′ = match_dict(varname(p) => s)
+                    θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+                else
+                    opₚ = operation(p) # s may not be a call (defslots)
+                    opₛ = nothing
+                    if iscall(s)
+                        if is_𝑋(opₚ) # check for variable function head
+                            opₛ = operation(s)
+                            σ′ = match_dict(varname(opₚ) => opₛ)
+                            θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+                        elseif !any(is_defslot, arguments(p))
+                            opₛ = operation(s)
+                            Symbol(opₛ) == opₚ || continue # stop this track
+                        end
+                    end
+                    θ = match_one_to_one([s], p, fₐ, θ)
+                    isempty(θ) && continue # stop this track
                 end
             end
 
-            θ′ = match_one_to_one([s], p, fₐ,  θ′) # what op?
+            if isempty(remaining) # terminate successfully if nothing left in remaining
+                ss′′ = setdiff(ss, ss′)
+                for σ ∈ θ
+                    push!(result, (ss′′, ps′′, σ))
+                end
+                continue
+            end
 
-            isempty(θ′) && return nothing
+            for i in reverse(eachindex(remaining)) # LIFO stack, reversing keeps order
+                v = remaining[i]
+                remaining′ = deleteat!(copy(remaining), i)
+                val = (vcat(current, v),
+                       remaining′,
+                       θ)
+                push!(stack, val)
+            end
+
         end
-        isempty(θ′) && return nothing
-        ss′′ = setdiff(ss, ss′) # so ss′ and ps′ have matches in θ′
-        return ((ss′′, ps′′, σ) for σ ∈ θ′)
+        return result
     end
 
-    ii = Iterators.map(λ, i)
-    _chain(ii)
+    i = combinations(ss, n)
+    ii = Iterators.map(ss′ -> λ(ss′, ps′, σ, ss), i)
+    iii = Iterators.flatten(ii)
+    return iii
 end
+
+
 
 # does p have a defslot that doesn't match at the operation level, then try and fix
 # before the operations don't match
@@ -371,7 +389,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     ss, ps = out
 
     if !isassociative(fₐ)
-        !isempty(filter(is_slot, ps)) && return nothing #()
+        !isempty(filter(is_slot, ps)) && return nothing
     end
 
     vs, vs′ = _groupby(x -> is_slot(x) || is_plus(x), ps)
@@ -382,7 +400,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     dplus, dstar = _countmap(vs), _countmap(vs′)
 
     vars = vcat(first.(dplus), first.(dstar))
-    isempty(vars) && return nothing #()
+    isempty(vars) && return nothing
 
     svars = first.(ds)
 
@@ -400,6 +418,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     ssᵥ = [v for (k,v) in ds] # last.(ds)
     i = ntuple(zero, Val(n))
 
+    # XXX brute force
     ii = Iterators.filter(Iterators.product(
         (Iterators.product((0:s for _ in 1:n)...) for s in ssᵥ)...)) do u
             all(sum(ui .* ks) == si for (ui,si) in zip(u, ssᵥ)) &&
@@ -415,7 +434,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
                     push!(vv, s) # allocates less than appending repeat([s],uᵢⱼ)
                 end
             end
-            # give defaults; missing or value
+            # give defaults; nothing or value
             if isempty(vv)
                 if is_defslot(v)
                     vv′ = defslot_op_map[fₐ]
@@ -425,7 +444,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
                     vv′ = nothing
                 end
             else
-                # if var is ~x fₐ not nothing
+                # if var is ~x fₐ not nothing call fₐ on vv
                 vv = sort(vv, lt = <ₑ)
                 vv′ = (is_slot(v) && !isa(fₐ, Nothing)) ? sterm(fₐ, vv) : vv
             end
