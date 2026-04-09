@@ -209,6 +209,8 @@ function _match_matched_variables(ss, ps, σ)
 
 end
 
+# match non_variable_patterns
+# return iterator of (ss, ps, σ) or nothing
 function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mnvpx, ss, ps, fₐ, σ
 
@@ -222,6 +224,8 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     n ≤ length(ss) || return nothing
 
     # we want to match over same size so we pick combinations
+    # stack-based approach to looping over permutations of ss′
+    # allowing for early termination if not matches are possible
     λ = (ss, ss′, ps′, σ) -> begin
         result = Any[]
         stack = Any[([], ss′, [σ])]
@@ -229,15 +233,14 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
             current, remaining, θ = pop!(stack)
             j = length(current)
             if j > 0
+
                 p, s = ps′[j], current[end]
-                # match one one
-                # actually logic goes here from above...
                 p, θ = check_nonmatching_defslot(s, p, θ)
                 p = normalize_pattern(p,s) # rewrite pattern if needed
 
                 # normalize might make p a non call, if so ...
                 if is_𝑋(p)
-                    # predicate?
+                    pass_any_guard(p, s) || continue
                     σ′ = match_dict(varname(p) => s)
                     θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
                 else
@@ -258,7 +261,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
                 end
             end
 
-            if isempty(remaining)
+            if isempty(remaining) # terminate succesfully if nothing left in remaining
                 ss′′ = setdiff(ss, ss′)
                 for σ ∈ θ
                     push!(result, (ss′′, ps′′, σ))
@@ -266,11 +269,11 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
                 continue
             end
 
-            for i in reverse(eachindex(remaining))
+            for i in reverse(eachindex(remaining)) # LIFO stack, reversing keeps order
                 v = remaining[i]
-                new_remaining = deleteat!(copy(remaining), i)
-                val = (vcat(current, v), #remaining[i]),
-                       new_remaining,
+                remaining′ = deleteat!(copy(remaining), i)
+                val = (vcat(current, v),
+                       remaining′,
                        θ)
                 push!(stack, val)
             end
