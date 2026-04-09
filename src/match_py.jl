@@ -277,6 +277,7 @@ end
 # seems slower than being a bit wasteful with iteration...
 function _match_non_variable_patternsX(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mnvpx, ss, ps, fₐ, σ
+
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
     ss, ps = out
