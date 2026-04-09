@@ -212,7 +212,6 @@ end
 
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
-
 function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mnvp, ss, ps, fₐ, σ
 
@@ -226,7 +225,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     n == 0 && return ((ss, ps, σ), )
     n ≤ length(ss) || return nothing
 
-    # XXX Tighten this up, does some excess checking
+    # XXX Tighten this up, does some excess checking XXX
     # look at example on p20
     # (pat, sub) = (:(g(a, ~x) + g(~x, ~y) + g(~(~z))), :(g(a, b) + g(b, a) + g(a, c)))
     # with `permutations`, we consider all of paths 123,132,213,231,312,321 in sequence,
@@ -234,7 +233,10 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     # 123,13⋅,2⋅⋅, 2⋅⋅, 31⋅, 32⋅ -- that is 11 checks
     # where as we only need to check
     # 1[23,3⋯], 2[⋅⋅,⋅⋅], 3[1⋅,2⋅] which is only 8 checks were we to walk in pre-order fashion
-
+    #
+    # in a local branch `mnvp` we implement this with a stack-based approach and it seems
+    # slower, as there are more allocations. For larger matching problems that approach
+    # might pay dividends, but not for the size of (pat, sub) above.
     i = permutations(1:length(ss), n)
 
     λ = inds -> begin
