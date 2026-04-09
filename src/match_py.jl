@@ -28,12 +28,12 @@ t matches s if there is a substitution with σ(t) = s
 
 
 # θ [\theta]  is an iterable of substitutions;
-# returns an iterable of substitutions
+# returns an iterable of substitutions, possibly empty
 function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
     #@show :m11, ss, p, fₐ
     n = length(ss)
     if !has_𝑋(p)              # constant expression/symbol/number
-        # match if p == ss(1)
+        # match if p == ss[1]
         n == 1 && eq_expr(only(ss), p) && return θ
         return ∅
 
@@ -70,8 +70,7 @@ function match_one_to_one(ss, p, fₐ = nothing, θ = (match_dict(),))
             σ′ = match_dict(varname(opₚ) => opₛ)
             θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
         else
-            # can't have defslot in p at this level
-            Symbol(opₛ) == opₚ || return ()
+            Symbol(opₛ) == opₚ || return ∅ # can't have defslot in p at this level
         end
         ss, ps = arguments(s), arguments(p)
         fₐ′ = isassociative(opₛ) ? opₛ : nothing
@@ -263,9 +262,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
                     Symbol(opₛ) == opₚ || return nothing
                 end
             end
-
             θ′ = match_one_to_one([s], p, fₐ,  θ′) # what op?
-
             isempty(θ′) && return nothing
         end
         isempty(θ′) && return nothing
@@ -276,6 +273,80 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     ii = Iterators.map(λ, i)
     _chain(ii)
 end
+
+# seems slower than being a bit wasteful with iteration...
+function _match_non_variable_patternsX(ss, ps, fₐ=nothing, σ=match_dict())
+    #@show :mnvpx, ss, ps, fₐ, σ
+    out = _match_matched_variables(ss, ps, σ)
+    isnothing(out) && return nothing
+    ss, ps = out
+    ps′, ps′′ = _groupby(!is_𝑋, ps)
+
+    n = length(ps′)
+    n == 0 && return ((ss, ps, σ), )
+    n ≤ length(ss) || return nothing
+
+    # we want to match over same size so we pick combinations
+    result = []
+    for ss′ ∈ combinations(ss, n)
+        # depth first generation of permutations DFS backtracking (Claude)
+        θ = [σ]
+        stack = Any[([], copy(ss′), θ)]
+        while !isempty(stack)
+            current, remaining, θ′ = pop!(stack)
+            j = length(current)
+            if j > 0
+                p = ps′[j]
+                s = last(current)
+                # match one one
+                # actually logic goes here from above...
+                p, θ′ = check_nonmatching_defslot(s, p, θ′)
+                p = normalize_pattern(p,s) # rewrite pattern if needed
+
+                # normalize might make p a non call, if so ...
+                if is_𝑋(p)
+                    # predicate?
+                    σ′ = match_dict(varname(p) => s)
+                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+                else
+                    opₚ = operation(p) # s may not be a call (defslots)
+                    opₛ = nothing
+                    if iscall(s)
+                        if is_𝑋(opₚ) # check for variable function head
+                            opₛ = operation(s)
+                            σ′ = match_dict(varname(opₚ) => opₛ)
+                            θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+                        elseif !any(is_defslot, arguments(p))
+                            opₛ = operation(s)
+                            Symbol(opₛ) == opₚ || continue # stop this track
+                        end
+                    end
+                    θ′ = match_one_to_one([s], p, fₐ, θ′)
+                    isempty(θ′) && continue # stop this track
+                end
+            end
+            if isempty(remaining)
+                for σ′ ∈ θ′
+                    push!(result, (setdiff(ss, ss′), ps′′, σ′))
+                end
+                continue
+            end
+
+            for i in reverse(eachindex(remaining))
+                v = remaining[i]
+                new_remaining = deleteat!(copy(remaining), i)
+                val = (vcat(current, v), #remaining[i]),
+                       new_remaining,
+                       θ′)
+                push!(stack, val)
+            end
+
+        end
+    end
+
+    return result
+end
+
 
 # does p have a defslot that doesn't match at the operation level, then try and fix
 # before the operations don't match
@@ -373,7 +444,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     ss, ps = out
 
     if !isassociative(fₐ)
-        !isempty(filter(is_slot, ps)) && return nothing #()
+        !isempty(filter(is_slot, ps)) && return nothing
     end
 
     vs, vs′ = _groupby(x -> is_slot(x) || is_plus(x), ps)
@@ -384,7 +455,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     dplus, dstar = _countmap(vs), _countmap(vs′)
 
     vars = vcat(first.(dplus), first.(dstar))
-    isempty(vars) && return nothing #()
+    isempty(vars) && return nothing
 
     svars = first.(ds)
 
@@ -402,6 +473,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
     ssᵥ = [v for (k,v) in ds] # last.(ds)
     i = ntuple(zero, Val(n))
 
+    # XXX brute force
     ii = Iterators.filter(Iterators.product(
         (Iterators.product((0:s for _ in 1:n)...) for s in ssᵥ)...)) do u
             all(sum(ui .* ks) == si for (ui,si) in zip(u, ssᵥ)) &&
@@ -417,7 +489,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
                     push!(vv, s) # allocates less than appending repeat([s],uᵢⱼ)
                 end
             end
-            # give defaults; missing or value
+            # give defaults; nothing or value
             if isempty(vv)
                 if is_defslot(v)
                     vv′ = defslot_op_map[fₐ]
@@ -427,7 +499,7 @@ function _match_sequence_variables(ss, ps, fₐ=nothing, σ = match_dict())
                     vv′ = nothing
                 end
             else
-                # if var is ~x fₐ not nothing
+                # if var is ~x fₐ not nothing call fₐ on vv
                 vv = sort(vv, lt = <ₑ)
                 vv′ = (is_slot(v) && !isa(fₐ, Nothing)) ? sterm(fₐ, vv) : vv
             end
