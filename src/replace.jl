@@ -196,7 +196,21 @@ function _replace(ex, uv::Pair)
     return map_matched(ex, ==(u), _ -> v)
 end
 
+#
 function _replace_arguments(T, ex, u, v)
+    iscall(ex) || return (ex == u ? v : ex)
+
+    postwalk(ex, T) do x
+        σ = _match(u, x) # sigma is nothing, (), or a substitution
+        isnothing(σ) && return x
+        isempty(σ) && return v
+        return _rewrite(T, σ, v)
+    end
+
+end
+
+# old traverse
+function __replace_arguments(T, ex, u, v)
     iscall(ex) || return (ex == u ? v : ex)
 
     σ = _match(u, ex) # sigma is nothing, (), or a substitution
@@ -210,18 +224,5 @@ function _replace_arguments(T, ex, u, v)
     op, args = operation(ex), arguments(ex)
     args′ = [_replace_arguments(T, a, u, v) for a ∈ args]
     return sterm(T, op, args′)
-
-end
-
-# this isn't quite the same
-function __replace_arguments(T, ex, u, v)
-    iscall(ex) || return (ex == u ? v : ex)
-
-    postwalk(ex, T) do x
-        σ = _match(u, x) # sigma is nothing, (), or a substitution
-        isnothing(σ) && return x
-        isempty(σ) && return v
-        return _rewrite(T, σ, v)
-    end
 
 end
