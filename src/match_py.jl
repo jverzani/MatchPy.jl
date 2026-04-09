@@ -261,7 +261,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
                 end
             end
 
-            if isempty(remaining) # terminate succesfully if nothing left in remaining
+            if isempty(remaining) # terminate successfully if nothing left in remaining
                 ss′′ = setdiff(ss, ss′)
                 for σ ∈ θ
                     push!(result, (ss′′, ps′′, σ))
