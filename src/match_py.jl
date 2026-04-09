@@ -211,8 +211,8 @@ end
 
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
-
-function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
+#=
+function _match_non_variable_patternsX(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mnvp, ss, ps, fₐ, σ
 
     out = _match_matched_variables(ss, ps, σ)
@@ -234,7 +234,6 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     # where as we only need to check
     # 1[23,3⋯], 2[⋅⋅,⋅⋅], 3[1⋅,2⋅] which is only 8 checks were we to walk in pre-order fashion
 
-    i = permutations(1:length(ss), n)
 
     λ = inds -> begin
         ss′= ss[inds]
@@ -270,12 +269,15 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
         return ((ss′′, ps′′, σ) for σ ∈ θ′)
     end
 
+    i = permutations(1:length(ss), n)
     ii = Iterators.map(λ, i)
     _chain(ii)
 end
+=#
 
+#=
 # seems slower than being a bit wasteful with iteration...
-function _match_non_variable_patternsX(ss, ps, fₐ=nothing, σ=match_dict())
+function _match_non_variable_patternsY(ss, ps, fₐ=nothing, σ=match_dict())
     #@show :mnvpx, ss, ps, fₐ, σ
 
     out = _match_matched_variables(ss, ps, σ)
@@ -347,6 +349,144 @@ function _match_non_variable_patternsX(ss, ps, fₐ=nothing, σ=match_dict())
 
     return result
 end
+=#
+# seems slower than being a bit wasteful with iteration...
+function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
+    #@show :mnvpx, ss, ps, fₐ, σ
+
+    out = _match_matched_variables(ss, ps, σ)
+    isnothing(out) && return nothing
+    ss, ps = out
+    ps′, ps′′ = _groupby(!is_𝑋, ps)
+
+    n = length(ps′)
+    n == 0 && return ((ss, ps, σ), )
+    n ≤ length(ss) || return nothing
+
+    # we want to match over same size so we pick combinations
+    λ = (ss, ss′, ps′, σ) -> begin
+        result = Any[]
+        stack = Any[([], ss′, [σ])]
+        while !isempty(stack)
+            current, remaining, θ = pop!(stack)
+            j = length(current)
+            if j > 0
+                p, s = ps′[j], current[end]
+                # match one one
+                # actually logic goes here from above...
+                p, θ = check_nonmatching_defslot(s, p, θ)
+                p = normalize_pattern(p,s) # rewrite pattern if needed
+
+                # normalize might make p a non call, if so ...
+                if is_𝑋(p)
+                    # predicate?
+                    σ′ = match_dict(varname(p) => s)
+                    θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+                else
+                    opₚ = operation(p) # s may not be a call (defslots)
+                    opₛ = nothing
+                    if iscall(s)
+                        if is_𝑋(opₚ) # check for variable function head
+                            opₛ = operation(s)
+                            σ′ = match_dict(varname(opₚ) => opₛ)
+                            θ = (merge_match(σ, σ′) for σ ∈ θ if iscompatible(σ, σ′))
+                        elseif !any(is_defslot, arguments(p))
+                            opₛ = operation(s)
+                            Symbol(opₛ) == opₚ || continue # stop this track
+                        end
+                    end
+                    θ = match_one_to_one([s], p, fₐ, θ)
+                    isempty(θ) && continue # stop this track
+                end
+            end
+
+            if isempty(remaining)
+                ss′′ = setdiff(ss, ss′)
+                for σ ∈ θ
+                    push!(result, (ss′′, ps′′, σ))
+                end
+                continue
+            end
+
+            for i in reverse(eachindex(remaining))
+                v = remaining[i]
+                new_remaining = deleteat!(copy(remaining), i)
+                val = (vcat(current, v), #remaining[i]),
+                       new_remaining,
+                       θ)
+                push!(stack, val)
+            end
+
+        end
+        return result
+    end
+
+    i = combinations(ss, n)
+    ii = Iterators.map(ss′ -> λ(ss, ss′, ps′, σ), i)
+    iii = Iterators.flatten(ii)
+    return iii
+
+    #=
+    for ss′ ∈ combinations(ss, n)
+        # depth first generation of permutations DFS backtracking (Claude)
+        θ = [σ]
+        stack = Any[([], copy(ss′), θ)]
+        while !isempty(stack)
+            current, remaining, θ′ = pop!(stack)
+            j = length(current)
+            if j > 0
+                p = ps′[j]
+                s = last(current)
+                # match one one
+                # actually logic goes here from above...
+                p, θ′ = check_nonmatching_defslot(s, p, θ′)
+                p = normalize_pattern(p,s) # rewrite pattern if needed
+
+                # normalize might make p a non call, if so ...
+                if is_𝑋(p)
+                    # predicate?
+                    σ′ = match_dict(varname(p) => s)
+                    θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+                else
+                    opₚ = operation(p) # s may not be a call (defslots)
+                    opₛ = nothing
+                    if iscall(s)
+                        if is_𝑋(opₚ) # check for variable function head
+                            opₛ = operation(s)
+                            σ′ = match_dict(varname(opₚ) => opₛ)
+                            θ′ = (merge_match(σ, σ′) for σ ∈ θ′ if iscompatible(σ, σ′))
+                        elseif !any(is_defslot, arguments(p))
+                            opₛ = operation(s)
+                            Symbol(opₛ) == opₚ || continue # stop this track
+                        end
+                    end
+                    θ′ = match_one_to_one([s], p, fₐ, θ′)
+                    isempty(θ′) && continue # stop this track
+                end
+            end
+            if isempty(remaining)
+                for σ′ ∈ θ′
+                    push!(result, (setdiff(ss, ss′), ps′′, σ′))
+                end
+                continue
+            end
+
+            for i in reverse(eachindex(remaining))
+                v = remaining[i]
+                new_remaining = deleteat!(copy(remaining), i)
+                val = (vcat(current, v), #remaining[i]),
+                       new_remaining,
+                       θ′)
+                push!(stack, val)
+            end
+
+        end
+    end
+
+    return result
+    =#
+end
+
 
 
 # does p have a defslot that doesn't match at the operation level, then try and fix
