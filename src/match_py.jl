@@ -227,7 +227,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     # size n, ss′, and then use a stack-based approach to loop over
     # permutations of ss′ allowing for early termination if no
     # matches are possible.
-    # (basic algorith, with errors fixed, from claude on depth-first stack approach to compute
+    # (basic algorithm, with errors fixed, from claude on depth-first stack approach to compute
     # permutations)
     λ = (ss′, ps′, σ, ss) -> begin
         result = Any[]
