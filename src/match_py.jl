@@ -233,10 +233,6 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     # 123,13⋅,2⋅⋅, 2⋅⋅, 31⋅, 32⋅ -- that is 11 checks
     # where as we only need to check
     # 1[23,3⋯], 2[⋅⋅,⋅⋅], 3[1⋅,2⋅] which is only 8 checks were we to walk in pre-order fashion
-    #
-    # in a local branch `mnvp` we implement this with a stack-based approach and it seems
-    # slower, as there are more allocations. For larger matching problems that approach
-    # might pay dividends, but not for the size of (pat, sub) above.
     i = permutations(1:length(ss), n)
 
     λ = inds -> begin
