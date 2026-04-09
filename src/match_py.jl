@@ -212,7 +212,7 @@ end
 # match non_variable_patterns
 # return iterator of (ss, ps, σ) or nothing
 function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
-    #@show :mnvpx, ss, ps, fₐ, σ
+    #@show :mnvp, ss, ps, fₐ, σ
 
     out = _match_matched_variables(ss, ps, σ)
     isnothing(out) && return nothing
@@ -223,10 +223,13 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     n == 0 && return ((ss, ps, σ), )
     n ≤ length(ss) || return nothing
 
-    # we want to match over same size so we pick combinations
-    # stack-based approach to looping over permutations of ss′
-    # allowing for early termination if not matches are possible
-    λ = (ss, ss′, ps′, σ) -> begin
+    # we want to match over same size so we first pick combinations of
+    # size n, ss′, and then use a stack-based approach to loop over
+    # permutations of ss′ allowing for early termination if no
+    # matches are possible.
+    # (basic algorith, with errors fixed, from claude on depth-first stack approach to compute
+    # permutations)
+    λ = (ss′, ps′, σ, ss) -> begin
         result = Any[]
         stack = Any[([], ss′, [σ])]
         while !isempty(stack)
@@ -283,7 +286,7 @@ function _match_non_variable_patterns(ss, ps, fₐ=nothing, σ=match_dict())
     end
 
     i = combinations(ss, n)
-    ii = Iterators.map(ss′ -> λ(ss, ss′, ps′, σ), i)
+    ii = Iterators.map(ss′ -> λ(ss′, ps′, σ, ss), i)
     iii = Iterators.flatten(ii)
     return iii
 end
