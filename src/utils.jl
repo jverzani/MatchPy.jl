@@ -4,7 +4,7 @@
 
 # if x is a wrapped constant number, unwrap it. Otherwise return x
 # Might need call like
-# MatchPy.unwrap_const(x::Basic) = SymEngine.unwrap_const(x)
+# AssociativeCommutativePatternMatching.unwrap_const(x::Basic) = SymEngine.unwrap_const(x)
 unwrap_const(x::Any) = _unwrap_const(x)
 
 
@@ -118,7 +118,7 @@ end
 
 # to pass to maketerm (sterm)
 # Might want to do something like
-# MatchPy.symtype(::SymEngine.Basic) = SymEngine.Basic
+# AssociativeCommutativePatternMatching.symtype(::SymEngine.Basic) = SymEngine.Basic
 symtype(::Real) = Expr
 symtype(::Symbol) = Expr
 symtype(::Expr) = Expr

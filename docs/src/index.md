@@ -1,6 +1,6 @@
-# MatchPy.jl
+# AssociativeCommutativePatternMatching.jl
 
-This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as MatchPy.
+This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3 (only the one-to-one matching has been implemented here).
 
 This implementation only depends on the lightweight `TermInterface` and `Combinatorics` packages.
 
@@ -11,38 +11,40 @@ Patterns are specified with Julia expressions. Subjects can be expressions or pe
 
 ## Interface
 
-Nothing is exported from this package; all methods must be qualified.
-
 The primary method is `_eachmatch(pattern, subject)` which returns an iterator of substitutions, typically in the form of an unrealized generator.
 
-The `MatchPy._match(pattern, subject)` method chooses the first of the possible substitutions given by `_eachmatch`, returning `nothing` if there are no matches.
+The `AssociativeCommutativePatternMatching._match(pattern, subject)` method chooses the first of the possible substitutions given by `_eachmatch`, returning `nothing` if there are no matches.
 
-The `MatchPy._rewrite(symtype, σ, rhs)` method replaces wildcards in the `rhs` template with values in the substitution, `σ`.
+The `AssociativeCommutativePatternMatching._rewrite(symtype, σ, rhs)` method replaces wildcards in the `rhs` template with values in the substitution, `σ`.
 
-The `MatchPy._replace(expr, pat => rhs, ...)` method walks (post-order traversal) through an expression, and can be used to replace parts of an expression with other parts.
+The `AssociativeCommutativePatternMatching._replace(expr, pat => rhs, ...)` method walks (post-order traversal) through an expression, and can be used to replace parts of an expression with other parts.
+
+Nothing is exported from this package; all methods must be qualified. The methods `_eachmatch` and `_match` are intended to be extended to a specific symbolic type, as in `Base.eachmatch(pat::SymEngine.Basic, sub) = AssociativeCommutativePatternMatching._eachmatch(pat, sub)`. The methods `_rewrite` and `_replace` can have a symbolic type (like `SymEngine.Basic`) passed as the leading variable so that the `TermInterface.maketerm` method returns the appropriate type of object. As such, these might have methods defined such as `rewrite(ex::Basic, lr::Pair) = AssociativeCommutativePatternMatching._rewrite(SymEngine.Basic, ex, lr)`.
+
+
 
 ### Examples
 
 "Each" match
 
 ```@repl matchpy
-using MatchPy
+using AssociativeCommutativePatternMatching
 pat, sub = :(~x + ~y), :(a + b)
-MatchPy._eachmatch(pat, sub) |> collect
+AssociativeCommutativePatternMatching._eachmatch(pat, sub) |> collect
 ```
 
 Single match:
 
 ```@repl matchpy
-MatchPy._match(pat, sub)
+AssociativeCommutativePatternMatching._match(pat, sub)
 ```
 
 Rewrite:
 
 ```@repl matchpy
 pat, sub = :(~x*tanh(exp(~x))), :(a^2 * tanh(exp(a^2)))
-σ = MatchPy._match(pat, sub)
-MatchPy._rewrite(Expr, σ, pat)
+σ = AssociativeCommutativePatternMatching._match(pat, sub)
+AssociativeCommutativePatternMatching._rewrite(Expr, σ, pat)
 ```
 
 (It should be an invariant that substituting the identified match `σ` into `pat` (with `_rewrite`) returns `sub`, when the wild cards are slot variables.)
@@ -50,13 +52,13 @@ MatchPy._rewrite(Expr, σ, pat)
 Replace:
 
 ```@repl matchpy
-MatchPy._replace(:(cos(2x)^2 + sin(2x)^2), :(sin(~x)^2 + cos(~x)^2) => 1)
+AssociativeCommutativePatternMatching._replace(:(cos(2x)^2 + sin(2x)^2), :(sin(~x)^2 + cos(~x)^2) => 1)
 ```
 
 Simplify:
 
 ```@repl matchpy
-MatchPy._simplify(:(cos(2x)^2 + sin(2x)^2))
+AssociativeCommutativePatternMatching._simplify(:(cos(2x)^2 + sin(2x)^2))
 ```
 
 The `_simplify` function builds on the above to perform some common simplifications.
@@ -65,11 +67,11 @@ The `_simplify` function builds on the above to perform some common simplificati
 
 Patterns are specified with wildcards of which there is a variety. We follow the specification of `SymbolicUtils`  (also implemented in `SymbolicIntegration.jl`, of which its `rule2` functionality was mined here for insight):
 
-* A "slot variable", specified as `:(~x)`, matches one argument of an enclosing operation. For the MatchPy algorithm, an associative function may have a slot variable match one or more arguments.
+* A "slot variable", specified as `:(~x)`, matches one argument of an enclosing operation. For the AssociativeCommutativePatternMatching algorithm, an associative function may have a slot variable match one or more arguments.
 
 * A "default slot variable", specified as `:(~!x)`, matches 0 or 1 arguments. If there are 0 matches a default value is used (for an operation of `+` this is `0`, for `*` this is `1`, and for an exponent, also `1`).
 
-* A "segment variable", specified `:(~~x)`, matches 0, 1, or more of the arguments. The match is returned as a collection of matches. (This is a "star" variable in MatchPy.)
+* A "segment variable", specified `:(~~x)`, matches 0, 1, or more of the arguments. The match is returned as a collection of matches. (This is a "star" variable in AssociativeCommutativePatternMatching.)
 
 * A "plus variable", specified as `:(~~~x)`, matches 1 or more of the arguments, similar to a segment variable.
 
@@ -86,15 +88,15 @@ Patterns are specified with wildcards of which there is a variety. We follow the
 ```@repl matchpy
 r = :(~!a * sin(~x)^2 + ~!a * cos(~x)^2) => :(~!a)
 
-MatchPy._replace(:(2cos(2x)^2 + 2sin(2x)^2), r)
+AssociativeCommutativePatternMatching._replace(:(2cos(2x)^2 + 2sin(2x)^2), r)
 
-MatchPy._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x))) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~!a * sin(~!b *~x + ~!c)^(~!m)), :(sin(2x))) |> collect
 ```
 
 * Use of a predicate function to filter matches:
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~!a * sin(~!b *~x::(!Base.Fix2(isa, Number)) + ~!c)^(~!m)), :(sin(2x))) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~!a * sin(~!b *~x::(!Base.Fix2(isa, Number)) + ~!c)^(~!m)), :(sin(2x))) |> collect
 ```
 
 (There are scoping issues with predicates to iron out, due to the use of `eval`.)
@@ -102,7 +104,7 @@ MatchPy._eachmatch(:(~!a * sin(~!b *~x::(!Base.Fix2(isa, Number)) + ~!c)^(~!m)),
 * Use of a segment variable:
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~x + ~~y), :(a + b)) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~x + ~~y), :(a + b)) |> collect
 ```
 
 Notice that `+` is associative, so the slot variable `~x` may match one or more arguments. In the case there is more than one, the function is called on them. This is why the first match has `:x => :(a+b)`. A match for a segment should always return a container.
@@ -110,28 +112,28 @@ Notice that `+` is associative, so the slot variable `~x` may match one or more 
 * Plus variables must have aleast one match:
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~x + ~~~y), :(a + b)) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~x + ~~~y), :(a + b)) |> collect
 ```
 
 This same result can also be achieved with an appropriate predicate:
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~x + ~~y::(!isempty)), :(a + b)) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~x + ~~y::(!isempty)), :(a + b)) |> collect
 ```
 
-For segment variables, MatchPy will try to identify all possibilities. Further, MatchPy has checks for *associativity* and *commutativity* of the operation and will call the operation on the identified associative matches.
+For segment variables, AssociativeCommutativePatternMatching will try to identify all possibilities. Further, AssociativeCommutativePatternMatching has checks for *associativity* and *commutativity* of the operation and will call the operation on the identified associative matches.
 
 This can lead to a combinatorially large number of matches:
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~x + ~~y), :(a + b + c)) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~x + ~~y), :(a + b + c)) |> collect
 ```
 
 The assumption of associativity can lead to many more matches. In this example, the first match, which uses `+` instead of `f`, has twice the number of matches, as `f` which is not assumed associative or commutative.
 
 ```@repl matchpy
-MatchPy._eachmatch(:(~~x + ~~y), :(a + b + c)) |> collect
-MatchPy._eachmatch(:(f(~~x, ~~y)), :(f(a,b,c))) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(~~x + ~~y), :(a + b + c)) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(f(~~x, ~~y)), :(f(a,b,c))) |> collect
 ```
 
 That `+` is commutative, allows a segment variable to use a standard order for a match, which matches the order of no assumption on commutivity.
@@ -141,7 +143,7 @@ Commutivity and associativity are checked by the internal functions `iscommutati
 We can see the difference here:
 
 ```@repl matchpy
-MatchPy.iscommutative(x::Symbol) = x ∈ (:(+), :(*), :fₘ)
-MatchPy._eachmatch(:(fₘ(~x, ~y)), :(fₘ(a,b))) |> collect
-MatchPy._eachmatch(:(f(~x, ~y)), :(f(a,b))) |> collect
+AssociativeCommutativePatternMatching.iscommutative(x::Symbol) = x ∈ (:(+), :(*), :fₘ)
+AssociativeCommutativePatternMatching._eachmatch(:(fₘ(~x, ~y)), :(fₘ(a,b))) |> collect
+AssociativeCommutativePatternMatching._eachmatch(:(f(~x, ~y)), :(f(a,b))) |> collect
 ```
