@@ -1,9 +1,9 @@
 using Test
-using MatchPy
-using MatchPy: _eachmatch, _replace, _match
+using AssociativeCommutativePatternMatching
+using AssociativeCommutativePatternMatching: _eachmatch, _replace, _match
 using TermInterface
 
-function MatchPy.isassociative(x::Symbol)
+function AssociativeCommutativePatternMatching.isassociative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₐ") && return true
@@ -11,7 +11,7 @@ function MatchPy.isassociative(x::Symbol)
     false
 end
 
-function MatchPy.iscommutative(x::Symbol)
+function AssociativeCommutativePatternMatching.iscommutative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₘ") && return true
@@ -278,26 +278,26 @@ end
     ]
 
     for (pat, sub, len) ∈ ts
-        σs = MatchPy._eachmatch(pat, sub)
+        σs = AssociativeCommutativePatternMatching._eachmatch(pat, sub)
         @test length(collect(σs)) == len
     end
 
 end
 
 @testset "_rewrite" begin
-    σ = MatchPy.match_dict(:x=>:x, :y=>1, :z=>[1,2,3], :w => [1,:(x^2)])
+    σ = AssociativeCommutativePatternMatching.match_dict(:x=>:x, :y=>1, :z=>[1,2,3], :w => [1,:(x^2)])
 
-    @test MatchPy._rewrite(Expr, σ, :(sin(~x))) == :(sin(x))
-    @test MatchPy._rewrite(Expr, σ, :(~y + ~x)) == :(1 + x)
-    @test MatchPy._rewrite(Expr, σ, :(~x * cos((~x)^2))) == :(x*cos(x^2))
+    @test AssociativeCommutativePatternMatching._rewrite(Expr, σ, :(sin(~x))) == :(sin(x))
+    @test AssociativeCommutativePatternMatching._rewrite(Expr, σ, :(~y + ~x)) == :(1 + x)
+    @test AssociativeCommutativePatternMatching._rewrite(Expr, σ, :(~x * cos((~x)^2))) == :(x*cos(x^2))
 
     # splatting is handled in a kludgy manner
-    @test eval(MatchPy._rewrite(Expr, σ, :(+(~~z...)))) == 6
-    @test eval(MatchPy._rewrite(Expr, σ, :(splat(+)(~~z)))) == 6
+    @test eval(AssociativeCommutativePatternMatching._rewrite(Expr, σ, :(+(~~z...)))) == 6
+    @test eval(AssociativeCommutativePatternMatching._rewrite(Expr, σ, :(splat(+)(~~z)))) == 6
 
     # that works, but this fails --- the substitution is an expression...
     ex = :(log(1 + x^2))
-    σ = MatchPy._match(:(log(1+(~~~w))), ex)
+    σ = AssociativeCommutativePatternMatching._match(:(log(1+(~~~w))), ex)
     x = exp(1) - 1
     @test_broken eval(_rewrite(Expr, σ, :(log1p(+(~~~w...))))) ≈ 1.0
 
@@ -370,7 +370,7 @@ end
 end
 
 @testset "simplify" begin
-    si(ex) = MatchPy._simplify(ex, Expr)
+    si(ex) = AssociativeCommutativePatternMatching._simplify(ex, Expr)
 
     ss = (:(2x + 3x + 4),
           :(sin(x)/cos(x)),

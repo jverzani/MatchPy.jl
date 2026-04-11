@@ -1,15 +1,15 @@
-# MatchPy
+# AssociativeCommutativePatternMatching
 
-[![Build Status](https://github.com/jverzani/MatchPy.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jverzani/MatchPy.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Build Status](https://github.com/jverzani/AssociativeCommutativePatternMatching.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jverzani/AssociativeCommutativePatternMatching.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
-This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as MatchPy.
+This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3.
 
-This algorithm finds all matches of a pattern employing wildcards against a subject. The patterns are specified with Julia expressions. The MatchPy algorithm can separately match associatively *and* commutatively.
+This algorithm finds all matches of a pattern employing wildcards against a subject. The patterns are specified with Julia expressions. The AssociativeCommutativePatternMatching algorithm can separately match associatively *and* commutatively.
 
 Example:
 
 ```{julia}
-julia> MatchPy._match(:(~!a*~x + ~!b*~y), :(2x + y)) |> collect
+julia> AssociativeCommutativePatternMatching._match(:(~!a*~x + ~!b*~y), :(2x + y)) |> collect
 4-element Vector{Pair{Symbol, Any}}:
  :y => :y
  :b => 1
@@ -20,7 +20,7 @@ julia> MatchPy._match(:(~!a*~x + ~!b*~y), :(2x + y)) |> collect
 There are 4 possible matches here:
 
 ```
-julia> MatchPy._eachmatch(:(~!a*~x + ~!b*~y), :(2x + y)) |> collect
+julia> AssociativeCommutativePatternMatching._eachmatch(:(~!a*~x + ~!b*~y), :(2x + y)) |> collect
 4-element Vector{Base.ImmutableDict{Symbol, Any}}:
  Base.ImmutableDict(:y => :y, :b => 1, :x => 2, :a => :x)
  Base.ImmutableDict(:y => :y, :b => 1, :x => :x, :a => 2)

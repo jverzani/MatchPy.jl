@@ -1,8 +1,8 @@
 using Test
-using MatchPy
-import MatchPy: _match, _eachmatch
+using AssociativeCommutativePatternMatching
+import AssociativeCommutativePatternMatching: _match, _eachmatch
 
-function MatchPy.isassociative(x::Symbol)
+function AssociativeCommutativePatternMatching.isassociative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₐ") && return true
@@ -10,7 +10,7 @@ function MatchPy.isassociative(x::Symbol)
     false
 end
 
-function MatchPy.iscommutative(x::Symbol)
+function AssociativeCommutativePatternMatching.iscommutative(x::Symbol)
     x ∈ (:(+), :(*)) && return true
     nm = string(x)
     endswith(nm, "ₘ") && return true
@@ -21,28 +21,28 @@ end
 ## -- test internal functions
 @testset "syntactic_match" begin
     pat, sub = :(cos(sin(a))), :(cos(sin(a)))
-    m = MatchPy.syntactic_match(sub, pat)
-    @test m == MatchPy.MatchDict()
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
+    @test m == AssociativeCommutativePatternMatching.MatchDict()
 
     pat, sub = :(sin(~x)), :(sin(2x + cos(x)))
-    m = MatchPy.syntactic_match(sub, pat)
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
     @test m[:x] == :(2x + cos(x))
 
     pat, sub = :(F(sin(~x), ~x)), :(F(sin(2x), 2x))
-    m = MatchPy.syntactic_match(sub, pat)
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
     @test m[:x] == :(2x)
 
     pat, sub = :(cos(sin(a))), :(cos(sin(b)))
-    m = MatchPy.syntactic_match(sub, pat)
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
     @test isnothing(m)
 
     pat, sub = :(sin(cos(a))), :(cos(a))
-    m = MatchPy.syntactic_match(sub, pat)
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
     @test isnothing(m)
 
     pat = :((~F)(~x, ~y))
     sub = :(g(a,b))
-    m = MatchPy.syntactic_match(sub, pat)
+    m = AssociativeCommutativePatternMatching.syntactic_match(sub, pat)
     @test length(m) == 3
     @test m[:F] == :g
 
@@ -52,12 +52,12 @@ end
 @testset "associative" begin
     sub = :(1 + a + b)
     pat = :(1 + (~x))
-    θ = MatchPy.match_one_to_one((sub,), pat)
+    θ = AssociativeCommutativePatternMatching.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 1
     σ = only(θ)
     @test σ[:x] == :(a + b)
 
-    θ = MatchPy.match_one_to_one((:(a + b + c),), :((~~~x) + (~~~y)))
+    θ = AssociativeCommutativePatternMatching.match_one_to_one((:(a + b + c),), :((~~~x) + (~~~y)))
     @test length(collect(θ)) == 6 # (c, a+b),(a,c+b),(b,c+a),(c+a,b),(c+b,a), (a+b,c)
 
     # match
@@ -69,24 +69,24 @@ end
 end
 
 @testset "constant patterns" begin
-    @test isempty(MatchPy.match_sequence((:a,:b,:c), (:a,:b,:b)))    # no substitutions
-    @test only(MatchPy.match_sequence((:a,:b,:c), (:a,:b,:c))) == MatchPy.MatchDict() # one trivial substitution
+    @test isempty(AssociativeCommutativePatternMatching.match_sequence((:a,:b,:c), (:a,:b,:b)))    # no substitutions
+    @test only(AssociativeCommutativePatternMatching.match_sequence((:a,:b,:c), (:a,:b,:c))) == AssociativeCommutativePatternMatching.MatchDict() # one trivial substitution
 end
 
 @testset "matched variables" begin
 
     ss, ps = [:a,:b,:c], [:(~x),:(~y),:(~z)]
-    σ₀ = MatchPy.match_dict()
-    σ = MatchPy.match_dict(:x => :a)
+    σ₀ = AssociativeCommutativePatternMatching.match_dict()
+    σ = AssociativeCommutativePatternMatching.match_dict(:x => :a)
 
-    ss′, ps′ = MatchPy._match_matched_variables(ss, ps, σ)
+    ss′, ps′ = AssociativeCommutativePatternMatching._match_matched_variables(ss, ps, σ)
     @test ss′ == [:b,:c] && ps′ == [:(~y),:(~z)]
 
 
-    Θ = MatchPy.match_commutative_sequence(ss, ps, nothing, (σ₀,))
+    Θ = AssociativeCommutativePatternMatching.match_commutative_sequence(ss, ps, nothing, (σ₀,))
     @test length(collect(Θ)) == 6
 
-    Θ = MatchPy.match_commutative_sequence(ss, ps, nothing, (σ,))
+    Θ = AssociativeCommutativePatternMatching.match_commutative_sequence(ss, ps, nothing, (σ,))
     @test length(collect(Θ)) == 2
 end
 
@@ -94,7 +94,7 @@ end
 @testset "non-variable" begin
     pat =:(fₘ(g(a,(~x)), g((~x),(~y)), g((~~~z))))
     sub = :(fₘ(g(a,b), g(b,a), g(a,c)))
-    θ = MatchPy.match_one_to_one((sub,), pat)
+    θ = AssociativeCommutativePatternMatching.match_one_to_one((sub,), pat)
     σ = only(θ)
     @test length(σ) == 3
     @test σ[:x] == :b && σ[:y] == :a && σ[:z] == [:a, :c]
@@ -104,35 +104,35 @@ end
 @testset "regular variables" begin
     sub = :(fₘ(a,a,a,b,b,c))
     pat = :(fₘ((~x),(~x),(~~y)))
-    θ = MatchPy.match_one_to_one((sub,), pat)
+    θ = AssociativeCommutativePatternMatching.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 2
 
     sub = :(fₐₘ(a,a,a,b,b,c))
     pat = :(fₐₘ((~x),(~x),(~~y))) # associative has (~x) like (~~~x)
-    θ = MatchPy.match_one_to_one((sub,), pat)
+    θ = AssociativeCommutativePatternMatching.match_one_to_one((sub,), pat)
     @test length(collect(θ)) == 3 # ((~x) => fₐₘ(a, b), (~~y) => fₐₘ(a, c))
 
 end
 
 @testset "sequence variables" begin
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)])
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)])
     @test length(collect(θ)) == 2 # u(a,b), u(c); u(a), u(b,c)
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :u)
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :u)
     @test length(collect(θ)) == 3 # add u(a,b,c),u()
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :u)
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :u)
     @test length(collect(θ)) == 4
 
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)], :(uₘ)) # are these right
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~~x), :(~~~y)], :(uₘ)) # are these right
     @test length(collect(θ)) == 2 #
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :(uₘ))
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~~x), :(~~y)], :(uₘ))
     @test length(collect(θ)) == 3
 
-    θ = MatchPy.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :(uₐₘ))
+    θ = AssociativeCommutativePatternMatching.match_sequence([:a,:b,:c], [:(~~x), :(~~y)], :(uₐₘ))
     @test length(collect(θ)) == 4
 
 

@@ -56,7 +56,7 @@ prewalk(f, ex, T)  = walk(T, f(ex), x -> prewalk(f, x, T), identity)
 
 
 """
-    _replace(ex, args::Pair...)
+    _replace([T], ex, args::Pair...)
 
 Replace parts of an expression with something else.
 
@@ -76,7 +76,7 @@ The first three are straightforward. First, for function heads:
 ```@repl replace
 julia> using SymEngine
 
-julia> using MatchPy; import MatchPy: _replace
+julia> using AssociativeCommutativePatternMatching; import AssociativeCommutativePatternMatching: _replace
 
 julia> @vars x p
 (x, p)
@@ -183,11 +183,11 @@ sin(x + x*log(x) + sin(p + x^2))
 
 ```
 """
-function _replace(ex, uv::Pair)
+function _replace(T, ex, uv::Pair)
     u,v = uv
 
     # Expr
-    isa(u, Expr) && return _replace_arguments(symtype(ex), ex, u, v)
+    isa(u, Expr) && return _replace_arguments(T, ex, u, v)
 
     # is u function replace head
     isa(u, Function) && return map_matched_head(ex, ==(Symbol(u)), _ -> v)
@@ -196,6 +196,7 @@ function _replace(ex, uv::Pair)
     return map_matched(ex, ==(u), _ -> v)
 end
 
+_replace(ex, uv::Pair) = _replace(symtype(ex), ex, uv::Pair)
 #
 function _replace_arguments(T, ex, u, v)
     iscall(ex) || return (ex == u ? v : ex)

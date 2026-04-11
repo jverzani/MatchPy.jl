@@ -3,14 +3,14 @@
 ## Simplify = needs unwrap_const defined: e.g.:
 # SymEngine
 #=
-simplify(x::SymEngine.Basic) = MatchPy.simplify(SymEngine.Basic, x)
-MatchPy.unwrap_const(x::SymEngine.Basic) = SymEngine.unwrap_const(x)
+simplify(x::SymEngine.Basic) = AssociativeCommutativePatternMatching.simplify(SymEngine.Basic, x)
+AssociativeCommutativePatternMatching.unwrap_const(x::SymEngine.Basic) = SymEngine.unwrap_const(x)
 =#
 
 # SimpleExpressions
 #=
-simplify(x::SimpleExpressions.AbstractSymbolic) = MatchPy.simplify(SimpleExpressions.AbstractSymbolic, x)
-MatchPy.unwrap_const(x::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.unwrap_const(x)
+simplify(x::SimpleExpressions.AbstractSymbolic) = AssociativeCommutativePatternMatching.simplify(SimpleExpressions.AbstractSymbolic, x)
+AssociativeCommutativePatternMatching.unwrap_const(x::SimpleExpressions.AbstractSymbolic) = SimpleExpressions.unwrap_const(x)
 =#
 
 

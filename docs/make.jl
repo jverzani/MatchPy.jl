@@ -1,7 +1,7 @@
-using Documenter, MatchPy
+using Documenter, AssociativeCommutativePatternMatching
 
-makedocs(sitename="MatchPy Documentation",
-         repo = "github.com/jverzani/MatchPy.jl.git",
+makedocs(sitename="AssociativeCommutativePatternMatching Documentation",
+         repo = "github.com/jverzani/AssociativeCommutativePatternMatching.jl.git",
          format = Documenter.HTML(
              prettyurls = get(ENV, "CI", nothing) == "true"
          )
@@ -11,5 +11,5 @@ makedocs(sitename="MatchPy Documentation",
 # See "Hosting Documentation" and deploydocs() in the Documenter manual
 # for more information.
 deploydocs(
-    repo = "github.com/jverzani/MatchPy.jl.git"
+    repo = "github.com/jverzani/AssociativeCommutativePatternMatching.jl.git"
 )

@@ -1,6 +1,6 @@
 using Test
-using MatchPy
-using MatchPy: _eachmatch, _replace, _match
+using AssociativeCommutativePatternMatching
+using AssociativeCommutativePatternMatching: _eachmatch, _replace, _match
 
 
 include("match-test.jl")
