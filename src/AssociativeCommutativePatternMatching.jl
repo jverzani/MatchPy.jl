@@ -4,7 +4,6 @@ AssociativeCommutativePatternMatching
 
 This package provides an implementation of the algorithm of [Non-linear Associative-Commutative Many-to-One Pattern Matching with Sequence Variables](https://arxiv.org/abs/1705.00907) by Manuel Krebber through Chapter 3, referred to as MatchPy.
 
-
 A match is a dictionary containing a mapping between wildcard values in the *pattern* with values in the *subject*.
 
 Patterns are specified with expressions and within wildcards are specified by:
