@@ -158,7 +158,7 @@ function _invert_expr(pat)
         return pterm(:^, (pat, -1.0))
     elseif is_operation(:(//))(pat)
         u,v = arguments(pat)
-        u′ = isa(u, Number) ? -u : pterm(*, (u,-1))
+        u′ = isa(u, Number) ? -u : pterm(:*, (u,-1))
         return pterm(:(//), (u′, v))
     else
         return pterm(:^, (pat, -1))
